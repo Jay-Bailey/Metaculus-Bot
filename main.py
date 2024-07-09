@@ -10,13 +10,10 @@ from anthropic import AsyncAnthropic, InternalServerError, RateLimitError
 import backoff
 import logging
 
-from dotenv import load_dotenv
-load_dotenv()
-
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    filename=f'{datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")}_forecaster.log'  # This will log to a file. Remove this line to log to console.
+    filename=f'logs/{datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")}_forecaster.log'  # This will log to a file. Remove this line to log to console.
 )
 
 # Create a logger object
