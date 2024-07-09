@@ -5,6 +5,7 @@ import os
 import requests
 import re
 from tqdm.asyncio import tqdm
+from urllib.parse import urlencode
 
 from anthropic import AsyncAnthropic, InternalServerError, RateLimitError
 import backoff
@@ -54,6 +55,9 @@ background:
 
 fine_print:
 {fine_print}
+
+resolution_criteria:
+{resolution_criteria}
 
 Today is {today}.
 
@@ -133,8 +137,10 @@ def list_questions(tournament_id=WARMUP_TOURNAMENT_ID, offset=0, count=10):
         "status": "open",
         "type": "forecast",
         "include_description": "true",
+        "not_guessed_by": 190772,
     }
     url = f"{API_BASE_URL}/questions/"
+    logging.info(f"Requesting {url}{urlencode(url_qparams)}")
     response = requests.get(url, **AUTH_HEADERS, params=url_qparams)
     response.raise_for_status()
     data = json.loads(response.content)
@@ -198,20 +204,15 @@ async def call_claude(content: str) -> str:
 
 async def get_prediction(question_details, model):
     today = datetime.datetime.now().strftime("%Y-%m-%d")
-
-    title = question_details["title"]
-    background = question_details["description"]
-    fine_print = question_details["fine_print"]
-
-    # Comment this line to not use perplexity
-    summary_report = call_perplexity(title)
+    summary_report = call_perplexity(question_details["title"])
 
     content = PROMPT_TEMPLATE.format(
-                title=title,
+                title=question_details["title"],
                 summary_report=summary_report,
                 today=today,
-                background=background,
-                fine_print=fine_print,
+                background=question_details["description"],
+                fine_print=question_details["fine_print"],
+                resolution_criteria=question_details["resolution_criteria"],
             )
 
     response_text, usage = await call_claude(content)
@@ -249,7 +250,7 @@ async def process_agent(prediction_fn, question_detail, model, pbar):
     pbar.update(1)
     return result
 
-async def ensemble_async(model, prediction_fn, question_ids, num_agents=8):
+async def ensemble_async(model, prediction_fn, question_ids, num_agents=32):
     question_details = [get_question_details(question_id) for question_id in question_ids]
     total_cost = 0
     final_predictions = []
@@ -270,20 +271,19 @@ async def ensemble_async(model, prediction_fn, question_ids, num_agents=8):
             summary, _ = await call_claude(SUMMARY_PROMPT_PREFIX + '\n'.join(response_texts) + SUMMARY_PROMPT_SUFFIX)
             summaries.append(summary)
 
-    logger.info(final_predictions)
-    aggregated_predictions = [round(sum(predictions) / len(predictions), 0) for predictions in final_predictions]
-    logger.info(aggregated_predictions)
+            logger.info(predictions)
+            aggregated_prediction = round(sum(filter(None, predictions)) / len(list(filter(None, predictions))), 0)
+            logger.info(aggregated_prediction)
+
+            if aggregated_prediction is not None and SUBMIT_PREDICTION:
+                comment = f"This prediction was made by averaging an ensemble of {num_agents} agents. A summary of their most common considerations follows.\n\n{summaries[i]}"
+                logger.info(comment)
+                post_question_prediction(question_ids[i], aggregated_prediction)
+                post_question_comment(question_ids[i], comment)
+
     logger.info(f"Total cost was ${round(total_cost, 2)}")
 
-    for i, prediction in enumerate(aggregated_predictions):
-      if prediction is not None and SUBMIT_PREDICTION:
-        comment = f"This prediction was made by averaging an ensemble of {num_agents} agents. A summary of their most common considerations follows.\n\n{summaries[i]}"
-        logger.info(comment)
-        post_question_prediction(question_ids[i], prediction)
-        post_question_comment(question_ids[i], comment)
-
-    return aggregated_predictions
-
+SUBMIT_PREDICTION = False
 def main():
     data = list_questions(tournament_id=3349, count=99)
     ids = [question["id"] for question in data["results"]]
