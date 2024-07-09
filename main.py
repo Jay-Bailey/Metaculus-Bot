@@ -127,7 +127,7 @@ def get_question_details(question_id):
     response.raise_for_status()
     return json.loads(response.content)
 
-def list_questions(tournament_id=WARMUP_TOURNAMENT_ID, offset=0, count=10):
+def list_questions(tournament_id=3349, offset=0, count=10, get_answered_questions=False):
     """
     List (all details) {count} questions from the {tournament_id}
     """
@@ -141,8 +141,10 @@ def list_questions(tournament_id=WARMUP_TOURNAMENT_ID, offset=0, count=10):
         "status": "open",
         "type": "forecast",
         "include_description": "true",
-        "not_guessed_by": 190772,
     }
+    if not get_answered_questions:
+        url_qparams["not_guessed_by"] = 190772
+
     url = f"{API_BASE_URL}/questions/"
     logging.info(f"Requesting {url}{urlencode(url_qparams)}")
     response = requests.get(url, **AUTH_HEADERS, params=url_qparams)
@@ -284,15 +286,18 @@ async def ensemble_async(model, prediction_fn, question_ids, num_agents=32):
                 logger.info(comment)
                 post_question_prediction(question_ids[i], aggregated_prediction)
                 post_question_comment(question_ids[i], comment)
-                logger.info("Prediction submitted for question ", question_ids[i])
+                logger.info(f"Prediction submitted for question {question_ids[i]}")
 
     logger.info(f"Total cost was ${round(total_cost, 2)}")
 
+DEBUG_MODE = False
+SUBMIT_PREDICTION = not DEBUG_MODE
+
 def main():
-    data = list_questions(tournament_id=3349, count=99)
+    data = list_questions(tournament_id=3349, count=2 if DEBUG_MODE else 99, get_answered_questions=True)
     ids = [question["id"] for question in data["results"]]
     logger.info(f"Questions found: {ids}")
-    results = asyncio.run(ensemble_async(MODEL, get_prediction, ids, num_agents=32))
+    results = asyncio.run(ensemble_async(MODEL, get_prediction, ids, num_agents=2 if DEBUG_MODE else 32))
     logger.info(results)
 
 if __name__ == "__main__":
