@@ -280,10 +280,10 @@ async def ensemble_async(model, prediction_fn, question_ids, num_agents=32):
                 logger.info(comment)
                 post_question_prediction(question_ids[i], aggregated_prediction)
                 post_question_comment(question_ids[i], comment)
+                print("Prediction submitted for question ", question_ids[i])
 
     logger.info(f"Total cost was ${round(total_cost, 2)}")
 
-SUBMIT_PREDICTION = False
 def main():
     data = list_questions(tournament_id=3349, count=99)
     ids = [question["id"] for question in data["results"]]
