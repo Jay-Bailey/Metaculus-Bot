@@ -287,6 +287,8 @@ async def ensemble_async(model, prediction_fn, question_ids, num_agents=32):
 def main():
     data = list_questions(tournament_id=3349, count=99)
     ids = [question["id"] for question in data["results"]]
+    logging.info(f"Questions found: {ids}")
+    print(f"Questions found: {ids}")
     results = asyncio.run(ensemble_async(MODEL, get_prediction, ids, num_agents=32))
     logger.info(results)
 
