@@ -1,0 +1,4 @@
+anthropic
+backoff
+nest_asyncio
+tqdm
