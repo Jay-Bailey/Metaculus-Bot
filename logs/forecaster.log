@@ -1,0 +1,27 @@
+2024-07-09 19:28:29,256 - __main__ - INFO - True
+2024-07-09 19:29:01,497 - __main__ - INFO - Metaculus token loaded: True
+2024-07-09 19:29:01,498 - __main__ - INFO - Prediction submission enabled: True
+2024-07-09 19:29:02,582 - __main__ - INFO - Question 1 of 2: 26006 - Will Trump's lead over Biden be greater than 2 and less than or equal to 4 on July 15, 2024, according to 538's national polling average?
+2024-07-09 19:29:38,375 - httpx - INFO - HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2024-07-09 19:29:38,381 - __main__ - INFO - The extracted probability is: 65%
+2024-07-09 19:29:38,784 - httpx - INFO - HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2024-07-09 19:29:38,788 - __main__ - INFO - The extracted probability is: 65%
+2024-07-09 19:29:40,899 - httpx - INFO - HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2024-07-09 19:29:40,903 - __main__ - INFO - The extracted probability is: 65%
+2024-07-09 19:29:41,135 - httpx - INFO - HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2024-07-09 19:29:41,137 - __main__ - INFO - The extracted probability is: 65%
+2024-07-09 19:29:46,434 - httpx - INFO - HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2024-07-09 19:29:46,436 - __main__ - INFO - Question 2 of 2: 25934 - Will US offer India a nuclear submarine before Sept 30, 2024?
+2024-07-09 19:30:11,974 - httpx - INFO - HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2024-07-09 19:30:11,976 - __main__ - INFO - The extracted probability is: 3%
+2024-07-09 19:30:12,022 - httpx - INFO - HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2024-07-09 19:30:12,022 - __main__ - INFO - The extracted probability is: 3%
+2024-07-09 19:30:14,004 - httpx - INFO - HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2024-07-09 19:30:14,006 - __main__ - INFO - The extracted probability is: 2%
+2024-07-09 19:30:14,255 - httpx - INFO - HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2024-07-09 19:30:14,259 - __main__ - INFO - The extracted probability is: 3%
+2024-07-09 19:30:19,862 - httpx - INFO - HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2024-07-09 19:30:19,866 - __main__ - INFO - [[65, 65, 65, 65], [3, 3, 3, 2]]
+2024-07-09 19:30:19,867 - __main__ - INFO - [65.0, 3.0]
+2024-07-09 19:30:19,867 - __main__ - INFO - Total cost was $0.09
+2024-07-09 19:30:19,872 - __main__ - INFO - [65.0, 3.0]
