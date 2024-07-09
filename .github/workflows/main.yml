@@ -25,7 +25,7 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           TOURNAMENT_ID: ${{ vars.TOURNAMENT_ID }}
           API_BASE_URL: ${{ vars.API_BASE_URL }}
-      name: Upload logs
+      - name: Upload logs
         if: always()  # This ensures logs are uploaded even if the script fails
         uses: actions/upload-artifact@v3
         with:
