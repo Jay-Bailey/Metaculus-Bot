@@ -23,8 +23,8 @@ METACULUS_TOKEN = os.environ.get('METACULUS_TOKEN')
 OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
 PERPLEXITY_API_KEY = os.environ.get('PERPLEXITY_API_KEY')
 ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY')
-logger.info("Environment variables loaded: " + str(METACULUS_TOKEN is not None) + ", " + str(OPENAI_API_KEY is not None) + ", " + str(PERPLEXITY_API_KEY is not None) + ", " + str(ANTHROPIC_API_KEY is not None))
-print("Environment variables loaded: " + str(METACULUS_TOKEN is not None) + ", " + str(OPENAI_API_KEY is not None) + ", " + str(PERPLEXITY_API_KEY is not None) + ", " + str(ANTHROPIC_API_KEY is not None))
+logger.info("Environment variables loaded: " + str(METACULUS_TOKEN is not None) + ", " + str(PERPLEXITY_API_KEY is not None) + ", " + str(ANTHROPIC_API_KEY is not None))
+print("Environment variables loaded: " + str(METACULUS_TOKEN is not None) + ", " + str(PERPLEXITY_API_KEY is not None) + ", " + str(ANTHROPIC_API_KEY is not None))
 MODEL = 'claude-3-5-sonnet-20240620'
 
 PROMPT_TEMPLATE = """
@@ -284,11 +284,10 @@ async def ensemble_async(model, prediction_fn, question_ids, num_agents=8):
 
     return aggregated_predictions
 
-SUBMIT_PREDICTION = False
 def main():
-    data = list_questions(tournament_id=3349, count=2)
+    data = list_questions(tournament_id=3349, count=99)
     ids = [question["id"] for question in data["results"]]
-    results = asyncio.run(ensemble_async(MODEL, get_prediction, ids, num_agents=2))
+    results = asyncio.run(ensemble_async(MODEL, get_prediction, ids, num_agents=32))
     logger.info(results)
 
 if __name__ == "__main__":
