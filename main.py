@@ -288,7 +288,7 @@ SUBMIT_PREDICTION = False
 def main():
     data = list_questions(tournament_id=3349, count=2)
     ids = [question["id"] for question in data["results"]]
-    results = asyncio.run(ensemble_async(MODEL, get_prediction, ids, num_agents=4))
+    results = asyncio.run(ensemble_async(MODEL, get_prediction, ids, num_agents=2))
     logger.info(results)
 
 if __name__ == "__main__":

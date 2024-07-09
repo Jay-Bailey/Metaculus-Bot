@@ -19,9 +19,16 @@ jobs:
           python3 -m pip install -r requirements.txt
       - name: Run the script
         run: python main.py
-        env: # Or as an environment variable
+        env: 
           METACULUS_TOKEN: ${{ secrets.METACULUS_TOKEN }}
           PERPLEXITY_API_KEY: ${{ secrets.PERPLEXITY_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           TOURNAMENT_ID: ${{ vars.TOURNAMENT_ID }}
           API_BASE_URL: ${{ vars.API_BASE_URL }}
+      name: Upload logs
+        if: always()  # This ensures logs are uploaded even if the script fails
+        uses: actions/upload-artifact@v3
+        with:
+          name: forecaster-logs
+          path: logs/
+          retention-days: 90  # Adjust as needed
