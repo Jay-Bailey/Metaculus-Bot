@@ -4,6 +4,7 @@ import json
 import os
 import requests
 import re
+import sys
 from tqdm.asyncio import tqdm
 from urllib.parse import urlencode
 
@@ -14,8 +15,12 @@ import logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    filename=f'logs/{datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")}_forecaster.log'  # This will log to a file. Remove this line to log to console.
+    handlers=[
+        logging.FileHandler(f'logs/{datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")}_forecaster.log'),
+        logging.StreamHandler(sys.stdout)
+    ]
 )
+
 
 # Create a logger object
 logger = logging.getLogger(__name__)
@@ -25,7 +30,6 @@ OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
 PERPLEXITY_API_KEY = os.environ.get('PERPLEXITY_API_KEY')
 ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY')
 logger.info("Environment variables loaded: " + str(METACULUS_TOKEN is not None) + ", " + str(PERPLEXITY_API_KEY is not None) + ", " + str(ANTHROPIC_API_KEY is not None))
-print("Environment variables loaded: " + str(METACULUS_TOKEN is not None) + ", " + str(PERPLEXITY_API_KEY is not None) + ", " + str(ANTHROPIC_API_KEY is not None))
 MODEL = 'claude-3-5-sonnet-20240620'
 
 PROMPT_TEMPLATE = """
@@ -280,15 +284,14 @@ async def ensemble_async(model, prediction_fn, question_ids, num_agents=32):
                 logger.info(comment)
                 post_question_prediction(question_ids[i], aggregated_prediction)
                 post_question_comment(question_ids[i], comment)
-                print("Prediction submitted for question ", question_ids[i])
+                logger.info("Prediction submitted for question ", question_ids[i])
 
     logger.info(f"Total cost was ${round(total_cost, 2)}")
 
 def main():
     data = list_questions(tournament_id=3349, count=99)
     ids = [question["id"] for question in data["results"]]
-    logging.info(f"Questions found: {ids}")
-    print(f"Questions found: {ids}")
+    logger.info(f"Questions found: {ids}")
     results = asyncio.run(ensemble_async(MODEL, get_prediction, ids, num_agents=32))
     logger.info(results)
 
