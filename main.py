@@ -296,7 +296,7 @@ SUBMIT_PREDICTION = not DEBUG_MODE
 # TODO: Incorporate TOURNAMENT_ID, API_BASE_URL, and USER_ID as env variables into the code.
 
 def main():
-    data = list_questions(tournament_id=3349, count=2 if DEBUG_MODE else 99, get_answered_questions=True)
+    data = list_questions(tournament_id=3349, count=2 if DEBUG_MODE else 99, get_answered_questions=False)
     ids = [question["id"] for question in data["results"]]
     logger.info(f"Questions found: {ids}")
     results = asyncio.run(ensemble_async(MODEL, get_prediction, ids, num_agents=2 if DEBUG_MODE else 32))
