@@ -152,6 +152,11 @@ def list_questions(tournament_id=3349, offset=0, count=10, get_answered_question
     data = json.loads(response.content)
     return data
 
+@backoff.on_exception(backoff.expo,
+                      requests.exceptions.HTTPError,
+                      max_tries=8,  # Adjust as needed
+                      factor=2,     # Exponential factor
+                      jitter=backoff.full_jitter)
 def call_perplexity(query):
     url = "https://api.perplexity.ai/chat/completions"
     headers = {
