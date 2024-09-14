@@ -138,7 +138,7 @@ def list_questions(tournament_id=3349, offset=0, count=10, get_answered_question
         "order_by": "-activity",
         "forecast_type": "binary",
         "project": tournament_id,
-        "status": "closed",
+        "status": "open",
         "type": "forecast",
         "include_description": "true",
     }
@@ -301,11 +301,12 @@ SUBMIT_PREDICTION = not DEBUG_MODE
 # TODO: Incorporate TOURNAMENT_ID, API_BASE_URL, and USER_ID as env variables into the code.
 
 def main():
-    data = list_questions(tournament_id=3349, count=2 if DEBUG_MODE else 99, get_answered_questions=True if DEBUG_MODE else False)
+    data = list_questions(tournament_id=3349, count=2 if DEBUG_MODE else 99, get_answered_questions=DEBUG_MODE)
     ids = [question["id"] for question in data["results"]]
     logger.info(f"Questions found: {ids}")
     results = asyncio.run(ensemble_async(MODEL, get_prediction, ids, num_agents=2 if DEBUG_MODE else 32))
     logger.info(results)
 
 if __name__ == "__main__":
-    main()
+    #main()
+    call_perplexity("Test")
