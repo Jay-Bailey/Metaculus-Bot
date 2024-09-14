@@ -138,7 +138,7 @@ def list_questions(tournament_id=3349, offset=0, count=10, get_answered_question
         "order_by": "-activity",
         "forecast_type": "binary",
         "project": tournament_id,
-        "status": "open",
+        "status": "closed",
         "type": "forecast",
         "include_description": "true",
     }
