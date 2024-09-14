@@ -308,5 +308,4 @@ def main():
     logger.info(results)
 
 if __name__ == "__main__":
-    #main()
-    call_perplexity("Test")
+    main()
