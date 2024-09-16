@@ -295,13 +295,13 @@ async def ensemble_async(model, prediction_fn, question_ids, num_agents=32):
 
     logger.info(f"Total cost was ${round(total_cost, 2)}")
 
-DEBUG_MODE = True
+DEBUG_MODE = False
 SUBMIT_PREDICTION = not DEBUG_MODE
 
 # TODO: Incorporate TOURNAMENT_ID, API_BASE_URL, and USER_ID as env variables into the code.
 
 def main():
-    data = list_questions(tournament_id=3349, count=2 if DEBUG_MODE else 99, get_answered_questions=DEBUG_MODE)
+    data = list_questions(tournament_id=3349, count=2 if DEBUG_MODE else 99, get_answered_questions=True)
     ids = [question["id"] for question in data["results"]]
     logger.info(f"Questions found: {ids}")
     results = asyncio.run(ensemble_async(MODEL, get_prediction, ids, num_agents=2 if DEBUG_MODE else 32))
