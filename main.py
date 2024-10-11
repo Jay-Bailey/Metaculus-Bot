@@ -261,6 +261,18 @@ async def call_claude(content: str) -> str:
 
   return message.content[0].text, message.usage
 
+async def call_gpt(content: str):
+    async_client = AsyncOpenAI(api_key=OPENAI_API_KEY)
+    message = await async_client.chat.completions.create(
+        model="o1-preview",
+        messages = [
+            {"role": "system", "content": "You are a world-class forecaster."},
+            {"role": "user", "content": content},
+        ]
+    )
+    return message.choices[0].message, message.usage
+
+
 async def get_prediction(question_details, news_fn=call_perplexity, model_fn=call_claude, prompt_template=PROMPT_TEMPLATE):
     """Expected formats:
     
@@ -281,7 +293,9 @@ async def get_prediction(question_details, news_fn=call_perplexity, model_fn=cal
     )
 
     response_text, usage = await model_fn(content)
-    logger.info(f"Response text: {response_text}")
+    if DEBUG_MODE:
+        logger.info(f"Content: {content}")
+        logger.info(f"Response text: {response_text}")
 
     # Regular expression to find the number following 'Probability: '
     probability_match = find_number_before_percent(response_text)
@@ -301,14 +315,16 @@ SUMMARY_PROMPT_SUFFIX = """Please return a brief summary of the most common cons
 def get_usage(model, result):
   if model.startswith('claude'):
     return {'input': result[-1].input_tokens, 'output': result[-1].output_tokens}
+  elif model.startswith('o1'):
+    return {'input': result[-1].prompt_tokens, 'output': result[-1].completion_tokens}
   else:
-    raise NotImplementedError("Only Claude supported for this atm")
+      raise NotImplementedError("Only Claude and o1 supported for this atm")
 
-COST_DICT = {"claude-3-5-sonnet-20240620": {"input": 3.0/1000000, "output": 15.0/1000000}}
+COST_DICT = {"claude-3-5-sonnet-20240620": {"input": 3.0/1000000, "output": 15.0/1000000}, "o1-preview": {"input": 15/1000000, "output": 60/1000000}}
 
 def get_cost(model, token_dict):
   if model not in COST_DICT:
-    raise NotImplementedError("Only Claude supported for this atm")
+    raise NotImplementedError("Only Claude and o1 supported for this atm")
   return token_dict['input'] * COST_DICT[model]['input'] + token_dict['output'] * COST_DICT[model]['output']
 
 async def process_agent(prediction_fn, question_detail, pbar, news_fn=call_perplexity, model_fn=call_claude, prompt_template=PROMPT_TEMPLATE):
@@ -389,7 +405,7 @@ def main():
     data = list_questions(tournament_id=32506, count=2 if DEBUG_MODE else 99, get_answered_questions=DEBUG_MODE)
     ids = [question["id"] for question in data["results"]]
     logger.info(f"Questions found: {ids}")
-    results = asyncio.run(ensemble_async(MODEL, get_prediction, ids, num_agents=2 if DEBUG_MODE else 32, prompt_template=SUPERFORECASTING_TEMPLATE))
+    results = asyncio.run(ensemble_async(MODEL, get_prediction, ids, num_agents=2 if DEBUG_MODE else 32, model_fn=call_claude, prompt_template=PROMPT_TEMPLATE))
     logger.info(results)
 
 if __name__ == "__main__":
