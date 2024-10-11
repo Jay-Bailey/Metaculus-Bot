@@ -79,7 +79,7 @@ SUPERFORECASTING_TEMPLATE = """
 You are an advanced AI system which has been finetuned to provide calibrated probabilistic forecasts under uncertainty, with your performance evaluated according to the Brier score. When forecasting, do not treat 1% (1:99 odds) and 5% (1:19) as similarly "small" probabilities, or 90% (9:1) and 99% (99:1) as similarly "high" probabilities. As the odds show, they are markedly different, so output your probabilities accordingly.
 
 Question:
-{question}
+{title}
 
 Today's date: {today}
 Your pretraining knowledge cutoff: October 2023
@@ -88,7 +88,7 @@ We have retrieved the following information for this question:
 <background>{background}</background>
 
 Recall the question you are forecasting:
-{question}
+{title}
 
 Relevant fine-print:
 {fine_print}
@@ -270,25 +270,15 @@ async def get_prediction(question_details, news_fn=call_perplexity, model_fn=cal
     """
     today = datetime.datetime.now().strftime("%Y-%m-%d")
     summary_report = news_fn(question_details["title"])
-    print(question_details.keys())
-    print(question_details['question'].keys())
-
-    try:
-        content = prompt_template.format(
-            title=question_details["title"],
-            summary_report=summary_report,
-            today=today,
-            background=question_details["question"]["description"],
-            fine_print=question_details["question"]["fine_print"],
-            resolution_criteria=question_details["question"]["resolution_criteria"],
-        )
-    except KeyError as e:
-        print(f"KeyError occurred: {e}")
-        print("question_details keys:", question_details.keys())
-        if 'question' in question_details:
-            print("question keys:", question_details['question'].keys())
-        else:
-            print("'question' key is missing from question_details")
+  
+    content = prompt_template.format(
+        title=question_details["title"],
+        summary_report=summary_report,
+        today=today,
+        background=question_details["question"]["description"],
+        fine_print=question_details["question"]["fine_print"],
+        resolution_criteria=question_details["question"]["resolution_criteria"],
+    )
 
     response_text, usage = await model_fn(content)
 
