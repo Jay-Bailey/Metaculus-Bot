@@ -276,7 +276,7 @@ async def get_prediction(question_details, news_fn=call_perplexity, model_fn=cal
                 title=question_details["title"],
                 summary_report=summary_report,
                 today=today,
-                background=question_details["description"],
+                background=question_details["question"]["description"],
                 fine_print=question_details["question"]["fine_print"],
                 resolution_criteria=question_details["question"]["resolution_criteria"],
             )
