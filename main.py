@@ -273,14 +273,22 @@ async def get_prediction(question_details, news_fn=call_perplexity, model_fn=cal
     print(question_details.keys())
     print(question_details['question'].keys())
 
-    content = prompt_template.format(
-                title=question_details["title"],
-                summary_report=summary_report,
-                today=today,
-                background=question_details["question"]["description"],
-                fine_print=question_details["question"]["fine_print"],
-                resolution_criteria=question_details["question"]["resolution_criteria"],
-            )
+    try:
+        content = prompt_template.format(
+            title=question_details["title"],
+            summary_report=summary_report,
+            today=today,
+            background=question_details["question"]["description"],
+            fine_print=question_details["question"]["fine_print"],
+            resolution_criteria=question_details["question"]["resolution_criteria"],
+        )
+    except KeyError as e:
+        print(f"KeyError occurred: {e}")
+        print("question_details keys:", question_details.keys())
+        if 'question' in question_details:
+            print("question keys:", question_details['question'].keys())
+        else:
+            print("'question' key is missing from question_details")
 
     response_text, usage = await model_fn(content)
 
