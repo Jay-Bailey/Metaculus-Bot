@@ -87,10 +87,13 @@ Today's date: {today}
 Your pretraining knowledge cutoff: October 2023
 
 We have retrieved the following information for this question:
-<background>{background}</background>
+<background>{summary_report}</background>
 
 Recall the question you are forecasting:
 {title}
+
+Question description:
+{background}
 
 Relevant fine-print:
 {fine_print}
@@ -271,7 +274,7 @@ async def call_claude(content: str) -> str:
                       factor=2,     # Exponential factor
                       jitter=backoff.full_jitter)
 async def call_gpt(content: str):
-    async_client = AsyncOpenAI(api_key=OPENAI_API_KEY)
+    async_client = AsyncOpenAI()
     message = await async_client.chat.completions.create(
         model="o1-preview",
         messages = [
@@ -409,9 +412,9 @@ def main():
     data = list_questions(tournament_id=32506, count=2 if DEBUG_MODE else 99, get_answered_questions=DEBUG_MODE)
     ids = [question["id"] for question in data["results"]]
     logger.info(f"Questions found: {ids}")
-    #results = asyncio.run(ensemble_async(MODEL, get_prediction, ids, num_agents=2 if DEBUG_MODE else 32, model_fn=call_claude, prompt_template=PROMPT_TEMPLATE))
-    #logger.info(results)
-    benchmark_all_hyperparameters(ids)
+    results = asyncio.run(ensemble_async(MODEL, get_prediction, ids, num_agents=2 if DEBUG_MODE else 32, model_fn=call_gpt, prompt_template=PROMPT_TEMPLATE))
+    logger.info(results)
+    #benchmark_all_hyperparameters(ids)
 
 if __name__ == "__main__":
     main()
