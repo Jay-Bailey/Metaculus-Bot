@@ -215,7 +215,6 @@ async def call_claude(content: str) -> str:
 async def get_prediction(question_details, model):
     today = datetime.datetime.now().strftime("%Y-%m-%d")
     summary_report = call_perplexity(question_details["title"])
-    print(question_details)
 
     content = PROMPT_TEMPLATE.format(
                 title=question_details["title"],
@@ -295,7 +294,7 @@ async def ensemble_async(model, prediction_fn, question_ids, num_agents=32):
 
     logger.info(f"Total cost was ${round(total_cost, 2)}")
 
-DEBUG_MODE = True
+DEBUG_MODE = False
 SUBMIT_PREDICTION = not DEBUG_MODE
 
 # TODO: Incorporate TOURNAMENT_ID, API_BASE_URL, and USER_ID as env variables into the code.
