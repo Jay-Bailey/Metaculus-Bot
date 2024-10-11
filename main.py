@@ -310,8 +310,8 @@ def get_cost(model, token_dict):
     raise NotImplementedError("Only Claude supported for this atm")
   return token_dict['input'] * COST_DICT[model]['input'] + token_dict['output'] * COST_DICT[model]['output']
 
-async def process_agent(prediction_fn, question_detail, model, pbar):
-    result = await prediction_fn(question_detail, model)
+async def process_agent(prediction_fn, question_detail, pbar, news_fn=call_perplexity, model_fn=call_claude, prompt_template=PROMPT_TEMPLATE):
+    result = await prediction_fn(question_detail, news_fn, model_fn, prompt_template)
     pbar.update(1)
     return result
 
@@ -326,7 +326,9 @@ def aggregate_prediction_log_odds(predictions):
 def aggegate_prediction_mean(predictions):
     return round(sum(filter(None, predictions)) / len(list(filter(None, predictions))), 0)
 
-async def ensemble_async(model, prediction_fn, question_ids, num_agents=32, aggregate_fn = aggregate_prediction_log_odds):
+async def ensemble_async(model, prediction_fn, question_ids, num_agents=32, 
+                         aggregate_fn = aggregate_prediction_log_odds,
+                         news_fn = call_perplexity, model_fn = call_claude, prompt_template = PROMPT_TEMPLATE):
     question_details = [get_question_details(question_id) for question_id in question_ids]
     total_cost = 0
     final_predictions = []
@@ -337,7 +339,7 @@ async def ensemble_async(model, prediction_fn, question_ids, num_agents=32, aggr
             logger.info(f"Question {i+1} of {len(question_details)}: {question_detail['id']} - {question_detail['title']}")
             tasks = []
             for _ in range(num_agents):
-                task = asyncio.create_task(process_agent(prediction_fn, question_detail, model, pbar))
+                task = asyncio.create_task(process_agent(prediction_fn, question_detail, pbar, news_fn, model_fn, prompt_template))
                 tasks.append(task)
             results = await asyncio.gather(*tasks)
             predictions, usages, response_texts = [result[0] for result in results], [get_usage(model, result) for result in results], [result[2] for result in results]
@@ -372,12 +374,13 @@ def benchmark_all_hyperparameters():
     news_fns = [call_perplexity, call_ask_news]
     model_fns = [call_claude, call_gpt]
     prompts = [PROMPT_TEMPLATE, SUPERFORECASTING_TEMPLATE]
+    question_details = [get_question_details(question_id) for question_id in ids]
 
     hyperparams = itertools.product(news_fns, model_fns, prompts)
 
     for hyperparam in hyperparams:
         logger.info(f"Using hyperparameters: {hyperparam}")
-        results = asyncio.run(ensemble_async(MODEL, get_prediction(news_fn=hyperparam[0], model_fn=hyperparam[1], prompt_template=hyperparam[2]), ids, num_agents=8 if hyperparam[1] == call_gpt else 16))
+        results = [asyncio.run(ensemble_async(MODEL, get_prediction(question_details=question_details[i], news_fn=hyperparam[0], model_fn=hyperparam[1], prompt_template=hyperparam[2]), ids, num_agents=8 if hyperparam[1] == call_gpt else 16)) for i in range(len(question_details))]
         logger.info(results)
         logger.info(f"Score: {score_benchmark_results(results)}")
 
@@ -385,7 +388,7 @@ def main():
     data = list_questions(tournament_id=32506, count=2 if DEBUG_MODE else 99, get_answered_questions=DEBUG_MODE)
     ids = [question["id"] for question in data["results"]]
     logger.info(f"Questions found: {ids}")
-    results = asyncio.run(ensemble_async(MODEL, get_prediction(prompt_template=SUPERFORECASTING_TEMPLATE), ids, num_agents=2 if DEBUG_MODE else 32))
+    results = asyncio.run(ensemble_async(MODEL, get_prediction, ids, num_agents=2 if DEBUG_MODE else 32, prompt_template=SUPERFORECASTING_TEMPLATE))
     logger.info(results)
 
 if __name__ == "__main__":
