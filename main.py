@@ -274,11 +274,11 @@ async def call_claude(content: str) -> str:
                       factor=2,     # Exponential factor
                       jitter=backoff.full_jitter)
 async def call_gpt(content: str):
-    async_client = AsyncOpenAI()
+    async_client = AsyncOpenAI(api_key=OPENAI_API_KEY)
     message = await async_client.chat.completions.create(
         model="o1-preview",
         messages = [
-            {"role": "system", "content": "You are a world-class forecaster."},
+            #{"role": "system", "content": "You are a world-class forecaster."},
             {"role": "user", "content": content},
         ]
     )
@@ -415,6 +415,22 @@ def main():
     results = asyncio.run(ensemble_async(MODEL, get_prediction, ids, num_agents=2 if DEBUG_MODE else 32, model_fn=call_gpt, prompt_template=PROMPT_TEMPLATE))
     logger.info(results)
     #benchmark_all_hyperparameters(ids)
+
+async def test_message():
+    async_client = AsyncOpenAI(api_key="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")
+    message = await async_client.chat.completions.create(
+        model="o1-preview",
+        messages = [
+            {"role": "user", "content": "What is 2+2?"},
+        ]
+    )
+    return message.choices[0].message, message.usage
+
+def test():
+    logger.info("Testing")
+    result = asyncio.run(test_message())
+    print(result)
+    return result
 
 if __name__ == "__main__":
     main()
