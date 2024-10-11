@@ -7,10 +7,13 @@ import re
 import sys
 from tqdm.asyncio import tqdm
 from urllib.parse import urlencode
+import itertools
 
 from anthropic import AsyncAnthropic, InternalServerError, RateLimitError
 import backoff
 import logging
+
+from asknews_sdk import AskNewsSDK, AsyncAskNewsSDK
 
 logging.basicConfig(
     level=logging.INFO,
@@ -29,6 +32,9 @@ METACULUS_TOKEN = os.environ.get('METACULUS_TOKEN')
 OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
 PERPLEXITY_API_KEY = os.environ.get('PERPLEXITY_API_KEY')
 ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY')
+ASK_NEWS_CLIENT_ID = os.environ.get('ASK_NEWS_CLIENT_ID')
+ASK_NEWS_CLIENT_SECRET = os.environ.get('ASK_NEWS_CLIENT_SECRET')
+
 logger.info("Environment variables loaded: " + str(METACULUS_TOKEN is not None) + ", " + str(PERPLEXITY_API_KEY is not None) + ", " + str(ANTHROPIC_API_KEY is not None))
 MODEL = 'claude-3-5-sonnet-20240620'
 
@@ -67,6 +73,43 @@ Today is {today}.
 
 You write your rationale and give your final answer as: "Probability: ZZ%", 0-100
 """
+
+SUPERFORECASTING_TEMPLATE = """
+You are an advanced AI system which has been finetuned to provide calibrated probabilistic forecasts under uncertainty, with your performance evaluated according to the Brier score. When forecasting, do not treat 1% (1:99 odds) and 5% (1:19) as similarly "small" probabilities, or 90% (9:1) and 99% (99:1) as similarly "high" probabilities. As the odds show, they are markedly different, so output your probabilities accordingly.
+
+Question:
+{question}
+
+Today's date: {today}
+Your pretraining knowledge cutoff: October 2023
+
+We have retrieved the following information for this question:
+<background>{background}</background>
+
+Recall the question you are forecasting:
+{question}
+
+Relevant fine-print:
+{fine_print}
+
+Resolution criteria:
+{resolution_criteria}
+
+Instructions:
+
+1. Compress key factual information from the sources, as well as useful background information which may not be in the sources, into a list of core factual points to reference. Aim for information which is specific, relevant, and covers the core considerations you'll use to make your forecast. For this step, do not draw any conclusions about how a fact will influence your answer or forecast. Place this section of your response in <facts></facts> tags.
+
+2. Provide a few reasons why the answer might be no. Rate the strength of each reason on a scale of 1-10. Use <no></no> tags.
+
+3. Provide a few reasons why the answer might be yes. Rate the strength of each reason on a scale of 1-10. Use <yes></yes> tags.
+
+4. Aggregate your considerations. Do not summarize or repeat previous points; instead, investigate how the competing factors and mechanisms interact and weigh against each other. Factorize your thinking across (exhaustive, mutually exclusive) cases if and only if it would be beneficial to your reasoning. We have detected that you overestimate world conflict, drama, violence, and crises due to news' negativity bias, which doesn't necessarily represent overall trends or base rates. Similarly, we also have detected you overestimate dramatic, shocking, or emotionally charged news due to news' sensationalism bias. Therefore adjust for news' negativity bias and sensationalism bias by considering reasons to why your provided sources might be biased or exaggerated. Think like a superforecaster. Use <thinking></thinking> tags for this section of your response.
+
+5. Output an initial probability (prediction) as a single number between 0 and 1 given steps 1-4. Use <tentative></tentative> tags.
+
+6. Reflect on your answer, performing sanity checks and mentioning any additional knowledge or background information which may be relevant. Check for over/underconfidence, improper treatment of conjunctive or disjunctive conditions (only if applicable), and other forecasting biases when reviewing your reasoning. Consider priors/base rates, and the extent to which case-specific information justifies the deviation between your tentative forecast and the prior. Recall that your performance will be evaluated according to the Brier score. Be precise with tail probabilities. Leverage your intuitions, but never change your forecast for the sake of modesty or balance alone. Finally, aggregate all of your previous reasoning and highlight key factors that inform your final forecast. Use <thinking></thinking> tags for this portion of your response.
+
+7. Output your final prediction as: "Probability: ZZ%", 0-100."""
 
 logger.info("Metaculus token loaded: " + str(METACULUS_TOKEN is not None))
 AUTH_HEADERS = {"headers": {"Authorization": f"Token {METACULUS_TOKEN}"}}
@@ -184,6 +227,11 @@ You do not produce forecasts yourself.
     return content
 
 
+def call_ask_news(query):
+    ask = AskNewsSDK()
+    graph = ask.chat.live_web_search(queries=[query])
+
+
 @backoff.on_exception(backoff.expo,
                       (RateLimitError, InternalServerError),
                       max_tries=8,  # Adjust as needed
@@ -212,11 +260,17 @@ async def call_claude(content: str) -> str:
 
   return message.content[0].text, message.usage
 
-async def get_prediction(question_details, model):
+async def get_prediction(question_details, news_fn=call_perplexity, model_fn=call_claude, prompt_template=PROMPT_TEMPLATE):
+    """Expected formats:
+    
+    news_fn(question_title: str) -> str
+    model_fn(content: str) -> str
+    prompt_template: Contains title, summary, today, background, fine_print, resolution_criteria
+    """
     today = datetime.datetime.now().strftime("%Y-%m-%d")
-    summary_report = call_perplexity(question_details["title"])
+    summary_report = news_fn(question_details["title"])
 
-    content = PROMPT_TEMPLATE.format(
+    content = prompt_template.format(
                 title=question_details["title"],
                 summary_report=summary_report,
                 today=today,
@@ -225,7 +279,7 @@ async def get_prediction(question_details, model):
                 resolution_criteria=question_details["question"]["resolution_criteria"],
             )
 
-    response_text, usage = await call_claude(content)
+    response_text, usage = await model_fn(content)
 
     # Regular expression to find the number following 'Probability: '
     probability_match = find_number_before_percent(response_text)
@@ -294,16 +348,32 @@ async def ensemble_async(model, prediction_fn, question_ids, num_agents=32):
 
     logger.info(f"Total cost was ${round(total_cost, 2)}")
 
-DEBUG_MODE = False
+DEBUG_MODE = True
 SUBMIT_PREDICTION = not DEBUG_MODE
 
 # TODO: Incorporate TOURNAMENT_ID, API_BASE_URL, and USER_ID as env variables into the code.
+def benchmark_all_hyperparameters():
+    data = list_questions(tournament_id=32506, count=99, get_answered_questions=True)
+    ids = [question["id"] for question in data["results"]]
+    logger.info(f"Questions found: {ids}")
+
+    news_fns = [call_perplexity, call_ask_news]
+    model_fns = [call_claude, call_gpt]
+    prompts = [PROMPT_TEMPLATE, SUPERFORECASTING_TEMPLATE]
+
+    hyperparams = itertools.product(news_fns, model_fns, prompts)
+
+    for hyperparam in hyperparams:
+        logger.info(f"Using hyperparameters: {hyperparam}")
+        results = asyncio.run(ensemble_async(MODEL, get_prediction(news_fn=hyperparam[0], model_fn=hyperparam[1], prompt_template=hyperparam[2]), ids, num_agents=8 if hyperparam[1] == call_gpt else 16))
+        logger.info(results)
+        logger.info(f"Score: {score_results(results)}")
 
 def main():
     data = list_questions(tournament_id=32506, count=2 if DEBUG_MODE else 99, get_answered_questions=DEBUG_MODE)
     ids = [question["id"] for question in data["results"]]
     logger.info(f"Questions found: {ids}")
-    results = asyncio.run(ensemble_async(MODEL, get_prediction, ids, num_agents=2 if DEBUG_MODE else 32))
+    results = asyncio.run(ensemble_async(MODEL, get_prediction(prompt_template=SUPERFORECASTING_TEMPLATE), ids, num_agents=2 if DEBUG_MODE else 32))
     logger.info(results)
 
 if __name__ == "__main__":
