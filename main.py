@@ -132,9 +132,14 @@ def list_questions(tournament_id=3349, offset=0, count=10, get_answered_question
     List (all details) {count} questions from the {tournament_id}
     """
     url_qparams = {
+        "limit": count,
+        "offset": offset,
+        "has_group": "false",
         "order_by": "-activity",
         "project": tournament_id,
         "status": "open",
+        "type": "forecast",
+        "include_description": "true",
     }
     if not get_answered_questions:
         url_qparams["not_guessed_by"] = 190772
@@ -210,14 +215,15 @@ async def call_claude(content: str) -> str:
 async def get_prediction(question_details, model):
     today = datetime.datetime.now().strftime("%Y-%m-%d")
     summary_report = call_perplexity(question_details["title"])
+    print(question_details)
 
     content = PROMPT_TEMPLATE.format(
                 title=question_details["title"],
                 summary_report=summary_report,
                 today=today,
                 background=question_details["description"],
-                fine_print=question_details["fine_print"],
-                resolution_criteria=question_details["resolution_criteria"],
+                fine_print=question_details["question"]["fine_print"],
+                resolution_criteria=question_details["question"]["resolution_criteria"],
             )
 
     response_text, usage = await call_claude(content)
