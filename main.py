@@ -401,7 +401,7 @@ def benchmark_all_hyperparameters(ids):
 
     for hyperparam in hyperparams:
         logger.info(f"Using hyperparameters: {hyperparam}")
-        results = asyncio.run(ensemble_async(MODEL, get_prediction, ids, num_agents=8 if hyperparam[1] == call_gpt else 16, news_fn=hyperparam[0], model_fn=hyperparam[1], prompt_template=hyperparam[2]))
+        results = asyncio.run(ensemble_async(MODEL, get_prediction, ids, num_agents=2, news_fn=hyperparam[0], model_fn=hyperparam[1], prompt_template=hyperparam[2]))
         logger.info(results)
         #logger.info(f"Score: {score_benchmark_results(results)}")
 
