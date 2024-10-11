@@ -3,3 +3,4 @@ backoff
 nest_asyncio
 tqdm
 asknews
+openai
