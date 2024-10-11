@@ -233,6 +233,8 @@ You do not produce forecasts yourself.
 def call_ask_news(query):
     ask = AskNewsSDK()
     graph = ask.chat.live_web_search(queries=[query])
+    return graph.as_string
+
 
 
 @backoff.on_exception(backoff.expo,
@@ -390,11 +392,7 @@ DEBUG_MODE = True
 SUBMIT_PREDICTION = not DEBUG_MODE
 
 # TODO: Incorporate TOURNAMENT_ID, API_BASE_URL, and USER_ID as env variables into the code.
-def benchmark_all_hyperparameters():
-    data = list_questions(tournament_id=32506, count=99, get_answered_questions=True)
-    ids = [question["id"] for question in data["results"]]
-    logger.info(f"Questions found: {ids}")
-
+def benchmark_all_hyperparameters(ids):
     news_fns = [call_perplexity, call_ask_news]
     model_fns = [call_claude, call_gpt]
     prompts = [PROMPT_TEMPLATE, SUPERFORECASTING_TEMPLATE]
@@ -406,14 +404,15 @@ def benchmark_all_hyperparameters():
         logger.info(f"Using hyperparameters: {hyperparam}")
         results = [asyncio.run(ensemble_async(MODEL, get_prediction(question_details=question_details[i], news_fn=hyperparam[0], model_fn=hyperparam[1], prompt_template=hyperparam[2]), ids, num_agents=8 if hyperparam[1] == call_gpt else 16)) for i in range(len(question_details))]
         logger.info(results)
-        logger.info(f"Score: {score_benchmark_results(results)}")
+        #logger.info(f"Score: {score_benchmark_results(results)}")
 
 def main():
     data = list_questions(tournament_id=32506, count=2 if DEBUG_MODE else 99, get_answered_questions=DEBUG_MODE)
     ids = [question["id"] for question in data["results"]]
     logger.info(f"Questions found: {ids}")
-    results = asyncio.run(ensemble_async(MODEL, get_prediction, ids, num_agents=2 if DEBUG_MODE else 32, model_fn=call_claude, prompt_template=PROMPT_TEMPLATE))
-    logger.info(results)
+    #results = asyncio.run(ensemble_async(MODEL, get_prediction, ids, num_agents=2 if DEBUG_MODE else 32, model_fn=call_claude, prompt_template=PROMPT_TEMPLATE))
+    #logger.info(results)
+    benchmark_all_hyperparameters(ids)
 
 if __name__ == "__main__":
     main()
