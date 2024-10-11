@@ -417,7 +417,7 @@ def main():
     #benchmark_all_hyperparameters(ids)
 
 async def test_message():
-    async_client = AsyncOpenAI(api_key="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")
+    async_client = AsyncOpenAI(api_key=OPENAI_API_KEY)
     message = await async_client.chat.completions.create(
         model="o1-preview",
         messages = [
@@ -433,4 +433,5 @@ def test():
     return result
 
 if __name__ == "__main__":
+    test()
     main()
