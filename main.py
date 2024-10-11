@@ -10,7 +10,9 @@ from urllib.parse import urlencode
 import itertools
 import math
 
-from anthropic import AsyncAnthropic, InternalServerError, RateLimitError
+from openai import AsyncOpenAI
+from openai import RateLimitError as OpenAIRateLimitError, InternalServerError as OpenAIInternalServerError
+from anthropic import AsyncAnthropic, InternalServerError as AnthropicInternalServerError, RateLimitError as AnthropicRateLimitError
 import backoff
 import logging
 
@@ -234,7 +236,7 @@ def call_ask_news(query):
 
 
 @backoff.on_exception(backoff.expo,
-                      (RateLimitError, InternalServerError),
+                      (AnthropicRateLimitError, AnthropicInternalServerError),
                       max_tries=8,  # Adjust as needed
                       factor=2,     # Exponential factor
                       jitter=backoff.full_jitter)
@@ -261,6 +263,11 @@ async def call_claude(content: str) -> str:
 
   return message.content[0].text, message.usage
 
+@backoff.on_exception(backoff.expo,
+                      (OpenAIRateLimitError, OpenAIInternalServerError),
+                      max_tries=8,  # Adjust as needed
+                      factor=2,     # Exponential factor
+                      jitter=backoff.full_jitter)
 async def call_gpt(content: str):
     async_client = AsyncOpenAI(api_key=OPENAI_API_KEY)
     message = await async_client.chat.completions.create(
