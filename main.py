@@ -38,8 +38,8 @@ ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY')
 ASK_NEWS_CLIENT_ID = os.environ.get('ASK_NEWS_CLIENT_ID')
 ASK_NEWS_CLIENT_SECRET = os.environ.get('ASK_NEWS_CLIENT_SECRET')
 
-logger.info("Environment variables loaded: " + str(METACULUS_TOKEN is not None) + ", " + str(PERPLEXITY_API_KEY is not None) + ", " + str(ANTHROPIC_API_KEY is not None))
-MODEL = 'claude-3-5-sonnet-20240620'
+# Log the names of the env variables too.
+logger.info("Environment variables loaded: METACULUS_TOKEN" + str(METACULUS_TOKEN is not None) + ", PERPLEXITY_API_KEY" + str(PERPLEXITY_API_KEY is not None) + ", ANTHROPIC_API_KEY" + str(ANTHROPIC_API_KEY is not None) + ", OPENAI_API_KEY" + str(OPENAI_API_KEY is not None) + ", ASK_NEWS_CLIENT_ID" + str(ASK_NEWS_CLIENT_ID is not None) + ", ASK_NEWS_CLIENT_SECRET" + str(ASK_NEWS_CLIENT_SECRET is not None))
 
 PROMPT_TEMPLATE = """
 You are a professional forecaster interviewing for a job.
@@ -355,13 +355,14 @@ def aggregate_prediction_log_odds(predictions):
 def aggegate_prediction_mean(predictions):
     return round(sum(filter(None, predictions)) / len(list(filter(None, predictions))), 0)
 
-async def ensemble_async(model, prediction_fn, question_ids, num_agents=32, 
+async def ensemble_async(prediction_fn, question_ids, num_agents=32, 
                          aggregate_fn = aggregate_prediction_log_odds,
                          news_fn = call_perplexity, model_fn = call_claude, prompt_template = PROMPT_TEMPLATE):
     question_details = [get_question_details(question_id) for question_id in question_ids]
     total_cost = 0
     final_predictions = []
     summaries = []
+    model_name = "claude-3-5-sonnet-20240620" if model_fn == call_claude else "o1-preview"
     total_iterations = len(question_details) * num_agents
     with tqdm(total=total_iterations) as pbar:
         for i, question_detail in enumerate(question_details):
@@ -371,11 +372,11 @@ async def ensemble_async(model, prediction_fn, question_ids, num_agents=32,
                 task = asyncio.create_task(process_agent(prediction_fn, question_detail, pbar, news_fn, model_fn, prompt_template))
                 tasks.append(task)
             results = await asyncio.gather(*tasks)
-            predictions, usages, response_texts = [result[0] for result in results], [get_usage(model, result) for result in results], [result[2] for result in results]
+            predictions, usages, response_texts = [result[0] for result in results], [get_usage(model_name, result) for result in results], [result[2] for result in results]
             final_predictions.append(predictions)
-            costs = [get_cost(model, usage) for usage in usages]
+            costs = [get_cost(model_name, usage) for usage in usages]
             total_cost += sum(costs)
-            summary, _ = await call_claude(SUMMARY_PROMPT_PREFIX + '\n'.join(response_texts) + SUMMARY_PROMPT_SUFFIX)
+            summary, _ = await model_fn(SUMMARY_PROMPT_PREFIX + '\n'.join(response_texts) + SUMMARY_PROMPT_SUFFIX)
             summaries.append(summary)
 
             logger.info(predictions)
@@ -404,7 +405,7 @@ def benchmark_all_hyperparameters(ids):
 
     for hyperparam in hyperparams:
         logger.info(f"Using hyperparameters: {hyperparam}")
-        results = asyncio.run(ensemble_async(MODEL, get_prediction, ids, num_agents=2, news_fn=hyperparam[0], model_fn=hyperparam[1], prompt_template=hyperparam[2]))
+        results = asyncio.run(ensemble_async(get_prediction, ids, num_agents=2, news_fn=hyperparam[0], model_fn=hyperparam[1], prompt_template=hyperparam[2]))
         logger.info(results)
         #logger.info(f"Score: {score_benchmark_results(results)}")
 
@@ -412,7 +413,7 @@ def main():
     data = list_questions(tournament_id=32506, count=2 if DEBUG_MODE else 99, get_answered_questions=DEBUG_MODE)
     ids = [question["id"] for question in data["results"]]
     logger.info(f"Questions found: {ids}")
-    results = asyncio.run(ensemble_async(MODEL, get_prediction, ids, num_agents=2 if DEBUG_MODE else 32, model_fn=call_gpt, prompt_template=PROMPT_TEMPLATE))
+    results = asyncio.run(ensemble_async(get_prediction, ids, num_agents=2 if DEBUG_MODE else 32, model_fn=call_gpt, prompt_template=PROMPT_TEMPLATE))
     logger.info(results)
     #benchmark_all_hyperparameters(ids)
 
