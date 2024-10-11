@@ -281,6 +281,7 @@ async def get_prediction(question_details, news_fn=call_perplexity, model_fn=cal
     )
 
     response_text, usage = await model_fn(content)
+    logger.info(f"Response text: {response_text}")
 
     # Regular expression to find the number following 'Probability: '
     probability_match = find_number_before_percent(response_text)
