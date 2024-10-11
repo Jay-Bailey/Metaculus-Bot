@@ -8,6 +8,7 @@ import sys
 from tqdm.asyncio import tqdm
 from urllib.parse import urlencode
 import itertools
+import math
 
 from anthropic import AsyncAnthropic, InternalServerError, RateLimitError
 import backoff
@@ -314,7 +315,18 @@ async def process_agent(prediction_fn, question_detail, model, pbar):
     pbar.update(1)
     return result
 
-async def ensemble_async(model, prediction_fn, question_ids, num_agents=32):
+def aggregate_prediction_log_odds(predictions):
+    probs = [p / 100 for p in predictions if p is not None]
+    probs = [max(min(p, 0.999), 0.001) for p in probs]
+    log_odds = [math.log(p / (1 - p)) for p in probs]
+    average_log_odds = sum(log_odds) / len(log_odds)
+    average_probability = 1 / (1 + math.exp(-average_log_odds))
+    return round(average_probability * 100, 0)
+
+def aggegate_prediction_mean(predictions):
+    return round(sum(filter(None, predictions)) / len(list(filter(None, predictions))), 0)
+
+async def ensemble_async(model, prediction_fn, question_ids, num_agents=32, aggregate_fn = aggregate_prediction_log_odds):
     question_details = [get_question_details(question_id) for question_id in question_ids]
     total_cost = 0
     final_predictions = []
@@ -336,7 +348,7 @@ async def ensemble_async(model, prediction_fn, question_ids, num_agents=32):
             summaries.append(summary)
 
             logger.info(predictions)
-            aggregated_prediction = round(sum(filter(None, predictions)) / len(list(filter(None, predictions))), 0)
+            aggregated_prediction = aggregate_fn(predictions)
             logger.info(aggregated_prediction)
 
             if aggregated_prediction is not None and SUBMIT_PREDICTION:
@@ -367,7 +379,7 @@ def benchmark_all_hyperparameters():
         logger.info(f"Using hyperparameters: {hyperparam}")
         results = asyncio.run(ensemble_async(MODEL, get_prediction(news_fn=hyperparam[0], model_fn=hyperparam[1], prompt_template=hyperparam[2]), ids, num_agents=8 if hyperparam[1] == call_gpt else 16))
         logger.info(results)
-        logger.info(f"Score: {score_results(results)}")
+        logger.info(f"Score: {score_benchmark_results(results)}")
 
 def main():
     data = list_questions(tournament_id=32506, count=2 if DEBUG_MODE else 99, get_answered_questions=DEBUG_MODE)
