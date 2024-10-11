@@ -396,13 +396,12 @@ def benchmark_all_hyperparameters(ids):
     news_fns = [call_perplexity, call_ask_news]
     model_fns = [call_claude, call_gpt]
     prompts = [PROMPT_TEMPLATE, SUPERFORECASTING_TEMPLATE]
-    question_details = [get_question_details(question_id) for question_id in ids]
 
     hyperparams = itertools.product(news_fns, model_fns, prompts)
 
     for hyperparam in hyperparams:
         logger.info(f"Using hyperparameters: {hyperparam}")
-        results = [asyncio.run(ensemble_async(MODEL, get_prediction(question_details=question_details[i], news_fn=hyperparam[0], model_fn=hyperparam[1], prompt_template=hyperparam[2]), ids, num_agents=8 if hyperparam[1] == call_gpt else 16)) for i in range(len(question_details))]
+        results = asyncio.run(ensemble_async(MODEL, get_prediction, ids, num_agents=8 if hyperparam[1] == call_gpt else 16, news_fn=hyperparam[0], model_fn=hyperparam[1], prompt_template=hyperparam[2]))
         logger.info(results)
         #logger.info(f"Score: {score_benchmark_results(results)}")
 
