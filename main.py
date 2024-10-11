@@ -270,6 +270,7 @@ async def get_prediction(question_details, news_fn=call_perplexity, model_fn=cal
     """
     today = datetime.datetime.now().strftime("%Y-%m-%d")
     summary_report = news_fn(question_details["title"])
+    print(question_details)
 
     content = prompt_template.format(
                 title=question_details["title"],
