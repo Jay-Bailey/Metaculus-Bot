@@ -132,15 +132,9 @@ def list_questions(tournament_id=3349, offset=0, count=10, get_answered_question
     List (all details) {count} questions from the {tournament_id}
     """
     url_qparams = {
-        "limit": count,
-        "offset": offset,
-        "has_group": "false",
         "order_by": "-activity",
-        "forecast_type": "binary",
         "project": tournament_id,
         "status": "open",
-        "type": "forecast",
-        "include_description": "true",
     }
     if not get_answered_questions:
         url_qparams["not_guessed_by"] = 190772
@@ -295,13 +289,13 @@ async def ensemble_async(model, prediction_fn, question_ids, num_agents=32):
 
     logger.info(f"Total cost was ${round(total_cost, 2)}")
 
-DEBUG_MODE = False
+DEBUG_MODE = True
 SUBMIT_PREDICTION = not DEBUG_MODE
 
 # TODO: Incorporate TOURNAMENT_ID, API_BASE_URL, and USER_ID as env variables into the code.
 
 def main():
-    data = list_questions(tournament_id=3349, count=2 if DEBUG_MODE else 99, get_answered_questions=DEBUG_MODE)
+    data = list_questions(tournament_id=32506, count=2 if DEBUG_MODE else 99, get_answered_questions=DEBUG_MODE)
     ids = [question["id"] for question in data["results"]]
     logger.info(f"Questions found: {ids}")
     results = asyncio.run(ensemble_async(MODEL, get_prediction, ids, num_agents=2 if DEBUG_MODE else 32))
