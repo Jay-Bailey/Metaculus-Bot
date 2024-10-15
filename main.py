@@ -132,7 +132,7 @@ def find_number_before_percent(s):
         return int(matches[-1])
     else:
         # Return None if no number found
-        logger.warning(f"No number found in string: {s}")
+        logger.info(f"No number found in string: {s}")
         return None
 
 def post_question_comment(question_id, comment_text):
@@ -312,13 +312,14 @@ async def get_prediction(question_details, news_fn=call_perplexity, model_fn=cal
 
     # Regular expression to find the number following 'Probability: '
     probability_match = find_number_before_percent(response_text)
+    logger.info(f"Probability match: {probability_match}")
 
-    # Extract the number if a match is found
-    probability = None
     if probability_match:
         probability = int(probability_match) # int(match.group(1))
         logger.info(f"The extracted probability is: {probability}%")
         probability = min(max(probability, 1), 99) # To prevent extreme forecasts
+    else:
+        probability = None
 
     return probability, summary_report, response_text, usage
 
@@ -347,7 +348,7 @@ async def process_agent(prediction_fn, question_detail, pbar, news_fn=call_perpl
 
 def aggregate_prediction_log_odds(predictions):
     probs = [p / 100 for p in predictions if p is not None]
-    probs = [max(min(p, 0.999), 0.001) for p in probs]
+    probs = [max(min(p, 0.99), 0.01) for p in probs]
     log_odds = [math.log(p / (1 - p)) for p in probs]
     average_log_odds = sum(log_odds) / len(log_odds)
     average_probability = 1 / (1 + math.exp(-average_log_odds))
