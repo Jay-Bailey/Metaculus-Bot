@@ -250,7 +250,7 @@ async def call_gpt(content: str):
                       max_tries=8,  # Adjust as needed
                       factor=2,     # Exponential factor
                       jitter=backoff.full_jitter)
-def call_perplexity(query):
+async def call_perplexity(query):
     url = "https://api.perplexity.ai/chat/completions"
     headers = {
         "accept": "application/json",
@@ -277,7 +277,11 @@ You do not produce forecasts yourself.
     content = response.json()["choices"][0]["message"]["content"]
     return content
 
-
+@backoff.on_exception(backoff.expo,
+                      requests.exceptions.HTTPError,
+                      max_tries=8,  # Adjust as needed
+                      factor=2,     # Exponential factor
+                      jitter=backoff.full_jitter)
 async def call_ask_news(query, summariser_fn=call_claude):
     ask = AskNewsSDK(client_id=ASK_NEWS_CLIENT_ID, client_secret=ASK_NEWS_CLIENT_SECRET)
     categories = ["All", "Business", "Crime", "Politics", "Science", "Sports", "Technology", "Military", "Health", "Entertainment", "Finance", "Culture", "Climate", "Environment", "World"]
@@ -309,7 +313,7 @@ async def get_prediction(question_details, news_fn=call_perplexity, model_fn=cal
     prompt_template: Contains title, summary, today, background, fine_print, resolution_criteria
     """
     today = datetime.datetime.now().strftime("%Y-%m-%d")
-    summary_report = news_fn(question_details["title"])
+    summary_report = await news_fn(question_details["title"])
   
     content = prompt_template.format(
         title=question_details["title"],
