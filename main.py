@@ -396,14 +396,14 @@ SUBMIT_PREDICTION = not DEBUG_MODE
 
 # TODO: Incorporate TOURNAMENT_ID, API_BASE_URL, and USER_ID as env variables into the code.
 def benchmark_all_hyperparameters(ids):
-    news_fns = [call_ask_news]
+    news_fns = [call_ask_news, call_perplexity]
     model_fns = [call_claude, call_gpt]
     prompts = [PROMPT_TEMPLATE, SUPERFORECASTING_TEMPLATE]
 
     hyperparams = itertools.product(news_fns, model_fns, prompts)
 
     for hyperparam in hyperparams:
-        logger.info(f"Using hyperparameters: {hyperparam[0], hyperparam[1], "PROMPT_TEMPLATE" if hyperparam[2] == PROMPT_TEMPLATE else "SUPERFORECASTING_TEMPLATE"}")
+        logger.info(f"Using hyperparameters: {hyperparam[0], hyperparam[1], 'PROMPT_TEMPLATE' if hyperparam[2] == PROMPT_TEMPLATE else 'SUPERFORECASTING_TEMPLATE'}")
         results = asyncio.run(ensemble_async(get_prediction, ids, num_agents=2, news_fn=hyperparam[0], model_fn=hyperparam[1], prompt_template=hyperparam[2]))
         logger.info(results)
         #logger.info(f"Score: {score_benchmark_results(results)}")
