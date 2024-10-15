@@ -295,7 +295,7 @@ async def call_ask_news(query, summariser_fn=call_claude):
         logger.error(f"Failed to parse categories: {categories}")
         raise e
     
-    graph = ask.news.search_news(queries=[query], strategy='latest news', sentiment='neutral', diversify_sources=True, method='nl', categories=category_list, return_type="string")
+    graph = ask.news.search_news(query=query, strategy='latest news', sentiment='neutral', diversify_sources=True, method='nl', categories=category_list, return_type="string")
     
     summary, _ = await call_claude("You are an assistant to a superforecaster. The superforecaster will give you a question they intend to forecast on. To be a great assistant, you generate a concise but detailed rundown of the most relevant news, including if the question would resolve Yes or No based on current information. You do not produce forecasts yourself. The relevant news you have found is: " + graph)
 
