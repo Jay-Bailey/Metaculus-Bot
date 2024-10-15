@@ -7,10 +7,16 @@ import re
 import sys
 from tqdm.asyncio import tqdm
 from urllib.parse import urlencode
+import itertools
+import math
 
-from anthropic import AsyncAnthropic, InternalServerError, RateLimitError
+from openai import AsyncOpenAI
+from openai import RateLimitError as OpenAIRateLimitError, InternalServerError as OpenAIInternalServerError
+from anthropic import AsyncAnthropic, InternalServerError as AnthropicInternalServerError, RateLimitError as AnthropicRateLimitError
 import backoff
 import logging
+
+from asknews_sdk import AskNewsSDK, AsyncAskNewsSDK
 
 logging.basicConfig(
     level=logging.INFO,
@@ -29,8 +35,11 @@ METACULUS_TOKEN = os.environ.get('METACULUS_TOKEN')
 OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
 PERPLEXITY_API_KEY = os.environ.get('PERPLEXITY_API_KEY')
 ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY')
-logger.info("Environment variables loaded: " + str(METACULUS_TOKEN is not None) + ", " + str(PERPLEXITY_API_KEY is not None) + ", " + str(ANTHROPIC_API_KEY is not None))
-MODEL = 'claude-3-5-sonnet-20240620'
+ASK_NEWS_CLIENT_ID = os.environ.get('ASK_NEWS_CLIENT_ID')
+ASK_NEWS_CLIENT_SECRET = os.environ.get('ASK_NEWS_CLIENT_SECRET')
+
+# Log the names of the env variables too.
+logger.info("Environment variables loaded: METACULUS_TOKEN " + str(METACULUS_TOKEN is not None) + ", PERPLEXITY_API_KEY " + str(PERPLEXITY_API_KEY is not None) + ", ANTHROPIC_API_KEY " + str(ANTHROPIC_API_KEY is not None) + ", OPENAI_API_KEY " + str(OPENAI_API_KEY is not None) + ", ASK_NEWS_CLIENT_ID " + str(ASK_NEWS_CLIENT_ID is not None) + ", ASK_NEWS_CLIENT_SECRET " + str(ASK_NEWS_CLIENT_SECRET is not None))
 
 PROMPT_TEMPLATE = """
 You are a professional forecaster interviewing for a job.
@@ -68,6 +77,46 @@ Today is {today}.
 You write your rationale and give your final answer as: "Probability: ZZ%", 0-100
 """
 
+SUPERFORECASTING_TEMPLATE = """
+You are an advanced AI system which has been finetuned to provide calibrated probabilistic forecasts under uncertainty, with your performance evaluated according to the Brier score. When forecasting, do not treat 1% (1:99 odds) and 5% (1:19) as similarly "small" probabilities, or 90% (9:1) and 99% (99:1) as similarly "high" probabilities. As the odds show, they are markedly different, so output your probabilities accordingly.
+
+Question:
+{title}
+
+Today's date: {today}
+Your pretraining knowledge cutoff: October 2023
+
+We have retrieved the following information for this question:
+<background>{summary_report}</background>
+
+Recall the question you are forecasting:
+{title}
+
+Question description:
+{background}
+
+Relevant fine-print:
+{fine_print}
+
+Resolution criteria:
+{resolution_criteria}
+
+Instructions:
+
+1. Compress key factual information from the sources, as well as useful background information which may not be in the sources, into a list of core factual points to reference. Aim for information which is specific, relevant, and covers the core considerations you'll use to make your forecast. For this step, do not draw any conclusions about how a fact will influence your answer or forecast. Place this section of your response in <facts></facts> tags.
+
+2. Provide a few reasons why the answer might be no. Rate the strength of each reason on a scale of 1-10. Use <no></no> tags.
+
+3. Provide a few reasons why the answer might be yes. Rate the strength of each reason on a scale of 1-10. Use <yes></yes> tags.
+
+4. Aggregate your considerations. Do not summarize or repeat previous points; instead, investigate how the competing factors and mechanisms interact and weigh against each other. Factorize your thinking across (exhaustive, mutually exclusive) cases if and only if it would be beneficial to your reasoning. We have detected that you overestimate world conflict, drama, violence, and crises due to news' negativity bias, which doesn't necessarily represent overall trends or base rates. Similarly, we also have detected you overestimate dramatic, shocking, or emotionally charged news due to news' sensationalism bias. Therefore adjust for news' negativity bias and sensationalism bias by considering reasons to why your provided sources might be biased or exaggerated. Think like a superforecaster. Use <thinking></thinking> tags for this section of your response.
+
+5. Output an initial probability (prediction) as a single number between 0 and 1 given steps 1-4. Use <tentative></tentative> tags.
+
+6. Reflect on your answer, performing sanity checks and mentioning any additional knowledge or background information which may be relevant. Check for over/underconfidence, improper treatment of conjunctive or disjunctive conditions (only if applicable), and other forecasting biases when reviewing your reasoning. Consider priors/base rates, and the extent to which case-specific information justifies the deviation between your tentative forecast and the prior. Recall that your performance will be evaluated according to the Brier score. Be precise with tail probabilities. Leverage your intuitions, but never change your forecast for the sake of modesty or balance alone. Finally, aggregate all of your previous reasoning and highlight key factors that inform your final forecast. Use <thinking></thinking> tags for this portion of your response.
+
+7. Output your final prediction as: "Probability: ZZ%", 0-100."""
+
 logger.info("Metaculus token loaded: " + str(METACULUS_TOKEN is not None))
 AUTH_HEADERS = {"headers": {"Authorization": f"Token {METACULUS_TOKEN}"}}
 API_BASE_URL = "https://www.metaculus.com/api2"
@@ -76,13 +125,12 @@ SUBMIT_PREDICTION = True
 logger.info("Prediction submission enabled: " + str(SUBMIT_PREDICTION))
 
 def find_number_before_percent(s):
-    # Use a regular expression to find all numbers followed by a '%'
-    matches = re.findall(r'(\d+)%', s)
+    # Use a regular expression to find all numbers (including decimals) prefaced by Probability: and followed by a '%'
+    matches = re.findall(r'(\d+(?:\.\d+)?)%', s)
     if matches:
-        # Return the last number found before a '%'
-        return int(matches[-1])
+        return float(matches[-1])
     else:
-        # Return None if no number found
+        logger.info(f"No number found in string: {s}")
         return None
 
 def post_question_comment(question_id, comment_text):
@@ -152,40 +200,7 @@ def list_questions(tournament_id=3349, offset=0, count=10, get_answered_question
     return data
 
 @backoff.on_exception(backoff.expo,
-                      requests.exceptions.HTTPError,
-                      max_tries=8,  # Adjust as needed
-                      factor=2,     # Exponential factor
-                      jitter=backoff.full_jitter)
-def call_perplexity(query):
-    url = "https://api.perplexity.ai/chat/completions"
-    headers = {
-        "accept": "application/json",
-        "authorization": f"Bearer {PERPLEXITY_API_KEY}",
-        "content-type": "application/json",
-    }
-    payload = {
-        "model": "llama-3.1-sonar-large-128k-online",
-        "messages": [
-            {
-                "role": "system",
-                "content": """
-You are an assistant to a superforecaster.
-The superforecaster will give you a question they intend to forecast on.
-To be a great assistant, you generate a concise but detailed rundown of the most relevant news, including if the question would resolve Yes or No based on current information.
-You do not produce forecasts yourself.
-""",
-            },
-            {"role": "user", "content": query},
-        ],
-    }
-    response = requests.post(url=url, json=payload, headers=headers)
-    response.raise_for_status()
-    content = response.json()["choices"][0]["message"]["content"]
-    return content
-
-
-@backoff.on_exception(backoff.expo,
-                      (RateLimitError, InternalServerError),
+                      (AnthropicRateLimitError, AnthropicInternalServerError),
                       max_tries=8,  # Adjust as needed
                       factor=2,     # Exponential factor
                       jitter=backoff.full_jitter)
@@ -212,30 +227,114 @@ async def call_claude(content: str) -> str:
 
   return message.content[0].text, message.usage
 
-async def get_prediction(question_details, model):
+@backoff.on_exception(backoff.expo,
+                      (OpenAIRateLimitError, OpenAIInternalServerError),
+                      max_tries=8,  # Adjust as needed
+                      factor=2,     # Exponential factor
+                      jitter=backoff.full_jitter)
+async def call_gpt(content: str):
+    async_client = AsyncOpenAI(api_key=OPENAI_API_KEY)
+    message = await async_client.chat.completions.create(
+        model="o1-preview",
+        messages = [
+            #{"role": "system", "content": "You are a world-class forecaster."},
+            {"role": "user", "content": content},
+        ]
+    )
+    return message.choices[0].message.content, message.usage
+
+@backoff.on_exception(backoff.expo,
+                      requests.exceptions.HTTPError,
+                      max_tries=8,  # Adjust as needed
+                      factor=2,     # Exponential factor
+                      jitter=backoff.full_jitter)
+async def call_perplexity(query):
+    url = "https://api.perplexity.ai/chat/completions"
+    headers = {
+        "accept": "application/json",
+        "authorization": f"Bearer {PERPLEXITY_API_KEY}",
+        "content-type": "application/json",
+    }
+    payload = {
+        "model": "llama-3.1-sonar-large-128k-online",
+        "messages": [
+            {
+                "role": "system",
+                "content": """
+You are an assistant to a superforecaster.
+The superforecaster will give you a question they intend to forecast on.
+To be a great assistant, you generate a concise but detailed rundown of the most relevant news, including if the question would resolve Yes or No based on current information.
+You do not produce forecasts yourself.
+""",
+            },
+            {"role": "user", "content": query},
+        ],
+    }
+    response = requests.post(url=url, json=payload, headers=headers)
+    response.raise_for_status()
+    content = response.json()["choices"][0]["message"]["content"]
+    return content
+
+@backoff.on_exception(backoff.expo,
+                      requests.exceptions.HTTPError,
+                      max_tries=8,  # Adjust as needed
+                      factor=2,     # Exponential factor
+                      jitter=backoff.full_jitter)
+async def call_ask_news(query, summariser_fn=call_claude):
+    ask = AskNewsSDK(client_id=ASK_NEWS_CLIENT_ID, client_secret=ASK_NEWS_CLIENT_SECRET)
+    categories = ["All", "Business", "Crime", "Politics", "Science", "Sports", "Technology", "Military", "Health", "Entertainment", "Finance", "Culture", "Climate", "Environment", "World"]
+    categories, _ = await summariser_fn(f"Given the question, what is the most relevant category or categories of news to search for? Question: {query}. Respond with a Python list of categories. If you are unsure, respond with ['All']. This is for an API, so you must pick ONLY from the following categories: {', '.join(categories)}")
+    print(categories)
+    
+    try:
+        category_list = eval(categories)
+        if not isinstance(category_list, list):
+            raise ValueError("Category list must be a list, got: " + str(categories))
+    except Exception as e:
+        logger.error(f"Failed to parse categories: {categories}")
+        raise e
+    
+    graph = ask.news.search_news(query=query, strategy='latest news', sentiment='neutral', diversify_sources=True, method='nl', categories=category_list, return_type="string")
+    
+    summary, _ = await summariser_fn("You are an assistant to a superforecaster. The superforecaster will give you a question they intend to forecast on. To be a great assistant, you generate a concise but detailed rundown of the most relevant news, including if the question would resolve Yes or No based on current information. You do not produce forecasts yourself. The relevant news you have found is: " + graph.as_string)
+
+    if DEBUG_MODE:
+        logger.info(f"News summary: {summary}")
+    return summary
+
+
+
+async def get_prediction(question_details, news_fn=call_perplexity, model_fn=call_claude, prompt_template=PROMPT_TEMPLATE):
+    """Expected formats:
+    
+    news_fn(question_title: str) -> str
+    model_fn(content: str) -> str
+    prompt_template: Contains title, summary, today, background, fine_print, resolution_criteria
+    """
     today = datetime.datetime.now().strftime("%Y-%m-%d")
-    summary_report = call_perplexity(question_details["title"])
+    summary_report = await news_fn(question_details["title"])
+  
+    content = prompt_template.format(
+        title=question_details["title"],
+        summary_report=summary_report,
+        today=today,
+        background=question_details["question"]["description"],
+        fine_print=question_details["question"]["fine_print"],
+        resolution_criteria=question_details["question"]["resolution_criteria"],
+    )
 
-    content = PROMPT_TEMPLATE.format(
-                title=question_details["title"],
-                summary_report=summary_report,
-                today=today,
-                background=question_details["description"],
-                fine_print=question_details["question"]["fine_print"],
-                resolution_criteria=question_details["question"]["resolution_criteria"],
-            )
-
-    response_text, usage = await call_claude(content)
+    response_text, usage = await model_fn(content)
 
     # Regular expression to find the number following 'Probability: '
     probability_match = find_number_before_percent(response_text)
+    logger.info(f"Probability match: {probability_match}")
 
-    # Extract the number if a match is found
-    probability = None
     if probability_match:
         probability = int(probability_match) # int(match.group(1))
         logger.info(f"The extracted probability is: {probability}%")
         probability = min(max(probability, 1), 99) # To prevent extreme forecasts
+    else:
+        probability = None
 
     return probability, summary_report, response_text, usage
 
@@ -245,49 +344,65 @@ SUMMARY_PROMPT_SUFFIX = """Please return a brief summary of the most common cons
 def get_usage(model, result):
   if model.startswith('claude'):
     return {'input': result[-1].input_tokens, 'output': result[-1].output_tokens}
+  elif model.startswith('o1'):
+    return {'input': result[-1].prompt_tokens, 'output': result[-1].completion_tokens}
   else:
-    raise NotImplementedError("Only Claude supported for this atm")
+      raise NotImplementedError("Only Claude and o1 supported for this atm")
 
-COST_DICT = {"claude-3-5-sonnet-20240620": {"input": 3.0/1000000, "output": 15.0/1000000}}
+COST_DICT = {"claude-3-5-sonnet-20240620": {"input": 3.0/1000000, "output": 15.0/1000000}, "o1-preview": {"input": 15/1000000, "output": 60/1000000}}
 
 def get_cost(model, token_dict):
   if model not in COST_DICT:
-    raise NotImplementedError("Only Claude supported for this atm")
+    raise NotImplementedError("Only Claude and o1 supported for this atm")
   return token_dict['input'] * COST_DICT[model]['input'] + token_dict['output'] * COST_DICT[model]['output']
 
-async def process_agent(prediction_fn, question_detail, model, pbar):
-    result = await prediction_fn(question_detail, model)
+async def process_agent(prediction_fn, question_detail, pbar, news_fn=call_perplexity, model_fn=call_claude, prompt_template=PROMPT_TEMPLATE):
+    result = await prediction_fn(question_detail, news_fn, model_fn, prompt_template)
     pbar.update(1)
     return result
 
-async def ensemble_async(model, prediction_fn, question_ids, num_agents=32):
+def aggregate_prediction_log_odds(predictions):
+    probs = [p / 100 for p in predictions if p is not None]
+    probs = [max(min(p, 0.99), 0.01) for p in probs]
+    log_odds = [math.log(p / (1 - p)) for p in probs]
+    average_log_odds = sum(log_odds) / len(log_odds)
+    average_probability = 1 / (1 + math.exp(-average_log_odds))
+    return round(average_probability * 100, 0)
+
+def aggegate_prediction_mean(predictions):
+    return round(sum(filter(None, predictions)) / len(list(filter(None, predictions))), 0)
+
+async def ensemble_async(prediction_fn, question_ids, num_agents=32, 
+                         aggregate_fn = aggregate_prediction_log_odds,
+                         news_fn = call_perplexity, model_fn = call_claude, prompt_template = PROMPT_TEMPLATE):
     question_details = [get_question_details(question_id) for question_id in question_ids]
     total_cost = 0
     final_predictions = []
     summaries = []
+    model_name = "claude-3-5-sonnet-20240620" if model_fn == call_claude else "o1-preview"
     total_iterations = len(question_details) * num_agents
     with tqdm(total=total_iterations) as pbar:
         for i, question_detail in enumerate(question_details):
             logger.info(f"Question {i+1} of {len(question_details)}: {question_detail['id']} - {question_detail['title']}")
             tasks = []
             for _ in range(num_agents):
-                task = asyncio.create_task(process_agent(prediction_fn, question_detail, model, pbar))
+                task = asyncio.create_task(process_agent(prediction_fn, question_detail, pbar, news_fn, model_fn, prompt_template))
                 tasks.append(task)
             results = await asyncio.gather(*tasks)
-            predictions, usages, response_texts = [result[0] for result in results], [get_usage(model, result) for result in results], [result[2] for result in results]
+            predictions, usages, response_texts = [result[0] for result in results], [get_usage(model_name, result) for result in results], [result[2] for result in results]
             final_predictions.append(predictions)
-            costs = [get_cost(model, usage) for usage in usages]
+            costs = [get_cost(model_name, usage) for usage in usages]
             total_cost += sum(costs)
-            summary, _ = await call_claude(SUMMARY_PROMPT_PREFIX + '\n'.join(response_texts) + SUMMARY_PROMPT_SUFFIX)
+            summary, _ = await model_fn(SUMMARY_PROMPT_PREFIX + '\n'.join(response_texts) + SUMMARY_PROMPT_SUFFIX)
             summaries.append(summary)
 
-            logger.info(predictions)
-            aggregated_prediction = round(sum(filter(None, predictions)) / len(list(filter(None, predictions))), 0)
-            logger.info(aggregated_prediction)
+            logger.info(f"Predictions: {predictions}")
+            aggregated_prediction = aggregate_fn(predictions)
+            logger.info(f"Aggregated prediction: {aggregated_prediction}")
 
             if aggregated_prediction is not None and SUBMIT_PREDICTION:
                 comment = f"This prediction was made by averaging an ensemble of {num_agents} agents. A summary of their most common considerations follows.\n\n{summaries[i]}"
-                logger.info(comment)
+                logger.info(f"Comment: {comment}")
                 post_question_prediction(question_ids[i], aggregated_prediction)
                 post_question_comment(question_ids[i], comment)
                 logger.info(f"Prediction submitted for question {question_ids[i]}")
@@ -298,13 +413,26 @@ DEBUG_MODE = False
 SUBMIT_PREDICTION = not DEBUG_MODE
 
 # TODO: Incorporate TOURNAMENT_ID, API_BASE_URL, and USER_ID as env variables into the code.
+def benchmark_all_hyperparameters(ids):
+    news_fns = [call_ask_news, call_perplexity]
+    model_fns = [call_claude, call_gpt]
+    prompts = [PROMPT_TEMPLATE, SUPERFORECASTING_TEMPLATE]
+
+    hyperparams = itertools.product(news_fns, model_fns, prompts)
+
+    for hyperparam in hyperparams:
+        logger.info(f"Using hyperparameters: {hyperparam[0], hyperparam[1], 'PROMPT_TEMPLATE' if hyperparam[2] == PROMPT_TEMPLATE else 'SUPERFORECASTING_TEMPLATE'}")
+        results = asyncio.run(ensemble_async(get_prediction, ids, num_agents=2, news_fn=hyperparam[0], model_fn=hyperparam[1], prompt_template=hyperparam[2]))
+        logger.info(results)
+        #logger.info(f"Score: {score_benchmark_results(results)}")
 
 def main():
     data = list_questions(tournament_id=32506, count=2 if DEBUG_MODE else 99, get_answered_questions=DEBUG_MODE)
-    ids = [question["id"] for question in data["results"]]
+    ids = [question["id"] for question in data["results"] if int(question["id"]) in [28877, 28876]]
     logger.info(f"Questions found: {ids}")
-    results = asyncio.run(ensemble_async(MODEL, get_prediction, ids, num_agents=2 if DEBUG_MODE else 32))
+    results = asyncio.run(ensemble_async(get_prediction, ids, num_agents=2 if DEBUG_MODE else 32, news_fn=call_ask_news, model_fn=call_claude, prompt_template=SUPERFORECASTING_TEMPLATE))
     logger.info(results)
+    #benchmark_all_hyperparameters(ids)
 
 if __name__ == "__main__":
     main()

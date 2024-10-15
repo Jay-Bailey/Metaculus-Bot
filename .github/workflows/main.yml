@@ -23,6 +23,9 @@ jobs:
           METACULUS_TOKEN: ${{ secrets.METACULUS_TOKEN }}
           PERPLEXITY_API_KEY: ${{ secrets.PERPLEXITY_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ASK_NEWS_CLIENT_ID: ${{ secrets.ASK_NEWS_CLIENT_ID }}
+          ASK_NEWS_CLIENT_SECRET: ${{ secrets.ASK_NEWS_CLIENT_SECRET }}
           TOURNAMENT_ID: ${{ vars.TOURNAMENT_ID }}
           API_BASE_URL: ${{ vars.API_BASE_URL }}
       - name: Upload logs
