@@ -125,11 +125,11 @@ SUBMIT_PREDICTION = True
 logger.info("Prediction submission enabled: " + str(SUBMIT_PREDICTION))
 
 def find_number_before_percent(s):
-    # Use a regular expression to find all numbers prefaced by Probability: and followed by a '%'
-    matches = re.findall(r'Probability: (\d+)%', s)
+    # Use a regular expression to find all numbers (including decimals) prefaced by Probability: and followed by a '%'
+    matches = re.findall(r'Probability: (\d+(?:\.\d+)?)%', s)
     if matches:
-        # Return the last number found before a '%'
-        return int(matches[-1])
+        # Return the last number found before a '%', converted to float
+        return float(matches[-1])
     else:
         # Return None if no number found
         logger.info(f"No number found in string: {s}")
