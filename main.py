@@ -285,7 +285,8 @@ You do not produce forecasts yourself.
 async def call_ask_news(query, summariser_fn=call_claude):
     ask = AskNewsSDK(client_id=ASK_NEWS_CLIENT_ID, client_secret=ASK_NEWS_CLIENT_SECRET)
     categories = ["All", "Business", "Crime", "Politics", "Science", "Sports", "Technology", "Military", "Health", "Entertainment", "Finance", "Culture", "Climate", "Environment", "World"]
-    categories, _ = await summariser_fn(f"Given the question, what is the most relevant category or categories of news to search for? Question: {query}. Categories: {', '.join(categories)} Respond with a Python list of categories. If you are unsure, respond with ['All'].")
+    categories, _ = await summariser_fn(f"Given the question, what is the most relevant category or categories of news to search for? Question: {query}. Respond with a Python list of categories. If you are unsure, respond with ['All']. This is for an API, so you must pick ONLY from the following categories: {', '.join(categories)}")
+    print(categories)
     
     try:
         category_list = eval(categories)
