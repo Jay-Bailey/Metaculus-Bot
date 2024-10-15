@@ -187,7 +187,7 @@ def list_questions(tournament_id=3349, offset=0, count=10, get_answered_question
         "has_group": "false",
         "order_by": "-activity",
         "project": tournament_id,
-        "status": "open",
+        #"status": "open",
         "type": "forecast",
         "include_description": "true",
     }
