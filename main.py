@@ -306,9 +306,6 @@ async def get_prediction(question_details, news_fn=call_perplexity, model_fn=cal
     )
 
     response_text, usage = await model_fn(content)
-    if DEBUG_MODE:
-        logger.info(f"Content: {content}")
-        logger.info(f"Response text: {response_text}")
 
     # Regular expression to find the number following 'Probability: '
     probability_match = find_number_before_percent(response_text)
@@ -381,13 +378,13 @@ async def ensemble_async(prediction_fn, question_ids, num_agents=32,
             summary, _ = await model_fn(SUMMARY_PROMPT_PREFIX + '\n'.join(response_texts) + SUMMARY_PROMPT_SUFFIX)
             summaries.append(summary)
 
-            logger.info(predictions)
+            logger.info(f"Predictions: {predictions}")
             aggregated_prediction = aggregate_fn(predictions)
-            logger.info(aggregated_prediction)
+            logger.info(f"Aggregated prediction: {aggregated_prediction}")
 
             if aggregated_prediction is not None and SUBMIT_PREDICTION:
                 comment = f"This prediction was made by averaging an ensemble of {num_agents} agents. A summary of their most common considerations follows.\n\n{summaries[i]}"
-                logger.info(comment)
+                logger.info(f"Comment: {comment}")
                 post_question_prediction(question_ids[i], aggregated_prediction)
                 post_question_comment(question_ids[i], comment)
                 logger.info(f"Prediction submitted for question {question_ids[i]}")
@@ -399,14 +396,14 @@ SUBMIT_PREDICTION = not DEBUG_MODE
 
 # TODO: Incorporate TOURNAMENT_ID, API_BASE_URL, and USER_ID as env variables into the code.
 def benchmark_all_hyperparameters(ids):
-    news_fns = [call_perplexity, call_ask_news]
+    news_fns = [call_ask_news]
     model_fns = [call_claude, call_gpt]
     prompts = [PROMPT_TEMPLATE, SUPERFORECASTING_TEMPLATE]
 
     hyperparams = itertools.product(news_fns, model_fns, prompts)
 
     for hyperparam in hyperparams:
-        logger.info(f"Using hyperparameters: {hyperparam}")
+        logger.info(f"Using hyperparameters: {hyperparam[0], hyperparam[1], "PROMPT_TEMPLATE" if hyperparam[2] == PROMPT_TEMPLATE else "SUPERFORECASTING_TEMPLATE"}")
         results = asyncio.run(ensemble_async(get_prediction, ids, num_agents=2, news_fn=hyperparam[0], model_fn=hyperparam[1], prompt_template=hyperparam[2]))
         logger.info(results)
         #logger.info(f"Score: {score_benchmark_results(results)}")
