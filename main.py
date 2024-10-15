@@ -202,46 +202,6 @@ def list_questions(tournament_id=3349, offset=0, count=10, get_answered_question
     return data
 
 @backoff.on_exception(backoff.expo,
-                      requests.exceptions.HTTPError,
-                      max_tries=8,  # Adjust as needed
-                      factor=2,     # Exponential factor
-                      jitter=backoff.full_jitter)
-def call_perplexity(query):
-    url = "https://api.perplexity.ai/chat/completions"
-    headers = {
-        "accept": "application/json",
-        "authorization": f"Bearer {PERPLEXITY_API_KEY}",
-        "content-type": "application/json",
-    }
-    payload = {
-        "model": "llama-3.1-sonar-large-128k-online",
-        "messages": [
-            {
-                "role": "system",
-                "content": """
-You are an assistant to a superforecaster.
-The superforecaster will give you a question they intend to forecast on.
-To be a great assistant, you generate a concise but detailed rundown of the most relevant news, including if the question would resolve Yes or No based on current information.
-You do not produce forecasts yourself.
-""",
-            },
-            {"role": "user", "content": query},
-        ],
-    }
-    response = requests.post(url=url, json=payload, headers=headers)
-    response.raise_for_status()
-    content = response.json()["choices"][0]["message"]["content"]
-    return content
-
-
-def call_ask_news(query):
-    ask = AskNewsSDK(client_id=ASK_NEWS_CLIENT_ID, client_secret=ASK_NEWS_CLIENT_SECRET)
-    graph = ask.chat.live_web_search(queries=[query])
-    return graph.as_string
-
-
-
-@backoff.on_exception(backoff.expo,
                       (AnthropicRateLimitError, AnthropicInternalServerError),
                       max_tries=8,  # Adjust as needed
                       factor=2,     # Exponential factor
@@ -284,6 +244,61 @@ async def call_gpt(content: str):
         ]
     )
     return message.choices[0].message.content, message.usage
+
+@backoff.on_exception(backoff.expo,
+                      requests.exceptions.HTTPError,
+                      max_tries=8,  # Adjust as needed
+                      factor=2,     # Exponential factor
+                      jitter=backoff.full_jitter)
+def call_perplexity(query):
+    url = "https://api.perplexity.ai/chat/completions"
+    headers = {
+        "accept": "application/json",
+        "authorization": f"Bearer {PERPLEXITY_API_KEY}",
+        "content-type": "application/json",
+    }
+    payload = {
+        "model": "llama-3.1-sonar-large-128k-online",
+        "messages": [
+            {
+                "role": "system",
+                "content": """
+You are an assistant to a superforecaster.
+The superforecaster will give you a question they intend to forecast on.
+To be a great assistant, you generate a concise but detailed rundown of the most relevant news, including if the question would resolve Yes or No based on current information.
+You do not produce forecasts yourself.
+""",
+            },
+            {"role": "user", "content": query},
+        ],
+    }
+    response = requests.post(url=url, json=payload, headers=headers)
+    response.raise_for_status()
+    content = response.json()["choices"][0]["message"]["content"]
+    return content
+
+
+async def call_ask_news(query, summariser_fn=call_claude):
+    ask = AskNewsSDK(client_id=ASK_NEWS_CLIENT_ID, client_secret=ASK_NEWS_CLIENT_SECRET)
+    categories = ["All", "Business", "Crime", "Politics", "Science", "Sports", "Technology", "Military", "Health", "Entertainment", "Finance", "Culture", "Climate", "Environment", "World"]
+    categories, _ = await summariser_fn(f"Given the question, what is the most relevant category or categories of news to search for? Question: {query}. Categories: {', '.join(categories)} Respond with a Python list of categories. If you are unsure, respond with ['All'].")
+    
+    try:
+        category_list = eval(categories)
+        if not isinstance(category_list, list):
+            raise ValueError("Category list must be a list, got: " + str(categories))
+    except Exception as e:
+        logger.error(f"Failed to parse categories: {categories}")
+        raise e
+    
+    graph = ask.news.search_news(queries=[query], strategy='latest news', sentiment='neutral', diversify_sources=True, method='nl', categories=category_list, return_type="string")
+    
+    summary, _ = await call_claude("You are an assistant to a superforecaster. The superforecaster will give you a question they intend to forecast on. To be a great assistant, you generate a concise but detailed rundown of the most relevant news, including if the question would resolve Yes or No based on current information. You do not produce forecasts yourself. The relevant news you have found is: " + graph)
+
+    if DEBUG_MODE:
+        logger.info(f"News summary: {summary}")
+    return summary
+
 
 
 async def get_prediction(question_details, news_fn=call_perplexity, model_fn=call_claude, prompt_template=PROMPT_TEMPLATE):
