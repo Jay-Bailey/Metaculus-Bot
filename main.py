@@ -409,7 +409,7 @@ def benchmark_all_hyperparameters(ids):
         #logger.info(f"Score: {score_benchmark_results(results)}")
 
 def main():
-    data = list_questions(tournament_id=32506, count=2 if DEBUG_MODE else 99, get_answered_questions=DEBUG_MODE)
+    data = list_questions(tournament_id=32506, count=3 if DEBUG_MODE else 99, get_answered_questions=DEBUG_MODE)
     ids = [question["id"] for question in data["results"]]
     logger.info(f"Questions found: {ids}")
     #results = asyncio.run(ensemble_async(get_prediction, ids, num_agents=2 if DEBUG_MODE else 32, model_fn=call_gpt, prompt_template=PROMPT_TEMPLATE))
