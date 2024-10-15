@@ -4,6 +4,9 @@ on:
   schedule:
     - cron: "30 13,21 * * *"
   workflow_dispatch:
+  push:
+    branches:
+      - jay/benchmark
 
 jobs:
   build:
