@@ -235,7 +235,7 @@ You do not produce forecasts yourself.
 
 
 def call_ask_news(query):
-    ask = AskNewsSDK()
+    ask = AskNewsSDK(client_id=ASK_NEWS_CLIENT_ID, client_secret=ASK_NEWS_CLIENT_SECRET)
     graph = ask.chat.live_web_search(queries=[query])
     return graph.as_string
 
