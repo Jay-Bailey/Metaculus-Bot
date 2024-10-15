@@ -126,7 +126,7 @@ logger.info("Prediction submission enabled: " + str(SUBMIT_PREDICTION))
 
 def find_number_before_percent(s):
     # Use a regular expression to find all numbers (including decimals) prefaced by Probability: and followed by a '%'
-    matches = re.findall(r'Probability: (\d+(?:\.\d+)?)%', s)
+    matches = re.findall(r'(\d+(?:\.\d+)?)%', s)
     if matches:
         # Return the last number found before a '%', converted to float
         return float(matches[-1])
@@ -429,12 +429,12 @@ def benchmark_all_hyperparameters(ids):
         #logger.info(f"Score: {score_benchmark_results(results)}")
 
 def main():
-    data = list_questions(tournament_id=32506, count=99 if DEBUG_MODE else 99, get_answered_questions=DEBUG_MODE)
-    ids = [question["id"] for question in data["results"] if int(question["id"]) in [28878, 28877, 28876]]
+    data = list_questions(tournament_id=32506, count=1 if DEBUG_MODE else 99, get_answered_questions=DEBUG_MODE)
+    ids = [question["id"] for question in data["results"] if int(question["id"]) in [28877, 28876]]
     logger.info(f"Questions found: {ids}")
-    #results = asyncio.run(ensemble_async(get_prediction, ids, num_agents=2 if DEBUG_MODE else 32, model_fn=call_gpt, prompt_template=PROMPT_TEMPLATE))
-    #logger.info(results)
-    benchmark_all_hyperparameters(ids)
+    results = asyncio.run(ensemble_async(get_prediction, ids, num_agents=32 if DEBUG_MODE else 32, model_fn=call_claude, prompt_template=SUPERFORECASTING_TEMPLATE))
+    logger.info(results)
+    #benchmark_all_hyperparameters(ids)
 
 if __name__ == "__main__":
     main()
