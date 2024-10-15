@@ -39,7 +39,7 @@ ASK_NEWS_CLIENT_ID = os.environ.get('ASK_NEWS_CLIENT_ID')
 ASK_NEWS_CLIENT_SECRET = os.environ.get('ASK_NEWS_CLIENT_SECRET')
 
 # Log the names of the env variables too.
-logger.info("Environment variables loaded: METACULUS_TOKEN" + str(METACULUS_TOKEN is not None) + ", PERPLEXITY_API_KEY" + str(PERPLEXITY_API_KEY is not None) + ", ANTHROPIC_API_KEY" + str(ANTHROPIC_API_KEY is not None) + ", OPENAI_API_KEY" + str(OPENAI_API_KEY is not None) + ", ASK_NEWS_CLIENT_ID" + str(ASK_NEWS_CLIENT_ID is not None) + ", ASK_NEWS_CLIENT_SECRET" + str(ASK_NEWS_CLIENT_SECRET is not None))
+logger.info("Environment variables loaded: METACULUS_TOKEN " + str(METACULUS_TOKEN is not None) + ", PERPLEXITY_API_KEY " + str(PERPLEXITY_API_KEY is not None) + ", ANTHROPIC_API_KEY " + str(ANTHROPIC_API_KEY is not None) + ", OPENAI_API_KEY " + str(OPENAI_API_KEY is not None) + ", ASK_NEWS_CLIENT_ID " + str(ASK_NEWS_CLIENT_ID is not None) + ", ASK_NEWS_CLIENT_SECRET " + str(ASK_NEWS_CLIENT_SECRET is not None))
 
 PROMPT_TEMPLATE = """
 You are a professional forecaster interviewing for a job.
@@ -128,10 +128,8 @@ def find_number_before_percent(s):
     # Use a regular expression to find all numbers (including decimals) prefaced by Probability: and followed by a '%'
     matches = re.findall(r'(\d+(?:\.\d+)?)%', s)
     if matches:
-        # Return the last number found before a '%', converted to float
         return float(matches[-1])
     else:
-        # Return None if no number found
         logger.info(f"No number found in string: {s}")
         return None
 
@@ -432,7 +430,7 @@ def main():
     data = list_questions(tournament_id=32506, count=2 if DEBUG_MODE else 99, get_answered_questions=DEBUG_MODE)
     ids = [question["id"] for question in data["results"] if int(question["id"]) in [28877, 28876]]
     logger.info(f"Questions found: {ids}")
-    results = asyncio.run(ensemble_async(get_prediction, ids, num_agents=2 if DEBUG_MODE else 32, model_fn=call_claude, prompt_template=SUPERFORECASTING_TEMPLATE))
+    results = asyncio.run(ensemble_async(get_prediction, ids, num_agents=2 if DEBUG_MODE else 32, news_fn=call_ask_news, model_fn=call_claude, prompt_template=SUPERFORECASTING_TEMPLATE))
     logger.info(results)
     #benchmark_all_hyperparameters(ids)
 
