@@ -125,13 +125,14 @@ SUBMIT_PREDICTION = True
 logger.info("Prediction submission enabled: " + str(SUBMIT_PREDICTION))
 
 def find_number_before_percent(s):
-    # Use a regular expression to find all numbers followed by a '%'
-    matches = re.findall(r'(\d+)%', s)
+    # Use a regular expression to find all numbers prefaced by Probability: and followed by a '%'
+    matches = re.findall(r'Probability: (\d+)%', s)
     if matches:
         # Return the last number found before a '%'
         return int(matches[-1])
     else:
         # Return None if no number found
+        logger.warning(f"No number found in string: {s}")
         return None
 
 def post_question_comment(question_id, comment_text):
@@ -413,8 +414,8 @@ def main():
     data = list_questions(tournament_id=32506, count=2 if DEBUG_MODE else 99, get_answered_questions=DEBUG_MODE)
     ids = [question["id"] for question in data["results"]]
     logger.info(f"Questions found: {ids}")
-    results = asyncio.run(ensemble_async(get_prediction, ids, num_agents=2 if DEBUG_MODE else 32, model_fn=call_gpt, prompt_template=PROMPT_TEMPLATE))
-    logger.info(results)
+    #results = asyncio.run(ensemble_async(get_prediction, ids, num_agents=2 if DEBUG_MODE else 32, model_fn=call_gpt, prompt_template=PROMPT_TEMPLATE))
+    #logger.info(results)
     benchmark_all_hyperparameters(ids)
 
 if __name__ == "__main__":
