@@ -282,7 +282,7 @@ async def call_gpt(content: str):
             {"role": "user", "content": content},
         ]
     )
-    return message.choices[0].message, message.usage
+    return message.choices[0].message.content, message.usage
 
 
 async def get_prediction(question_details, news_fn=call_perplexity, model_fn=call_claude, prompt_template=PROMPT_TEMPLATE):
@@ -415,24 +415,7 @@ def main():
     logger.info(f"Questions found: {ids}")
     results = asyncio.run(ensemble_async(get_prediction, ids, num_agents=2 if DEBUG_MODE else 32, model_fn=call_gpt, prompt_template=PROMPT_TEMPLATE))
     logger.info(results)
-    #benchmark_all_hyperparameters(ids)
-
-async def test_message():
-    async_client = AsyncOpenAI(api_key=OPENAI_API_KEY)
-    message = await async_client.chat.completions.create(
-        model="o1-preview",
-        messages = [
-            {"role": "user", "content": "What is 2+2?"},
-        ]
-    )
-    return message.choices[0].message, message.usage
-
-def test():
-    logger.info("Testing")
-    result = asyncio.run(test_message())
-    print(result)
-    return result
+    benchmark_all_hyperparameters(ids)
 
 if __name__ == "__main__":
-    test()
     main()
