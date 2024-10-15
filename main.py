@@ -187,7 +187,7 @@ def list_questions(tournament_id=3349, offset=0, count=10, get_answered_question
         "has_group": "false",
         "order_by": "-activity",
         "project": tournament_id,
-        #"status": "open",
+        "status": "open",
         "type": "forecast",
         "include_description": "true",
     }
@@ -298,7 +298,7 @@ async def call_ask_news(query, summariser_fn=call_claude):
     
     graph = ask.news.search_news(query=query, strategy='latest news', sentiment='neutral', diversify_sources=True, method='nl', categories=category_list, return_type="string")
     
-    summary, _ = await call_claude("You are an assistant to a superforecaster. The superforecaster will give you a question they intend to forecast on. To be a great assistant, you generate a concise but detailed rundown of the most relevant news, including if the question would resolve Yes or No based on current information. You do not produce forecasts yourself. The relevant news you have found is: " + graph.as_string)
+    summary, _ = await summariser_fn("You are an assistant to a superforecaster. The superforecaster will give you a question they intend to forecast on. To be a great assistant, you generate a concise but detailed rundown of the most relevant news, including if the question would resolve Yes or No based on current information. You do not produce forecasts yourself. The relevant news you have found is: " + graph.as_string)
 
     if DEBUG_MODE:
         logger.info(f"News summary: {summary}")
@@ -411,7 +411,7 @@ async def ensemble_async(prediction_fn, question_ids, num_agents=32,
 
     logger.info(f"Total cost was ${round(total_cost, 2)}")
 
-DEBUG_MODE = True
+DEBUG_MODE = False
 SUBMIT_PREDICTION = not DEBUG_MODE
 
 # TODO: Incorporate TOURNAMENT_ID, API_BASE_URL, and USER_ID as env variables into the code.
@@ -429,10 +429,10 @@ def benchmark_all_hyperparameters(ids):
         #logger.info(f"Score: {score_benchmark_results(results)}")
 
 def main():
-    data = list_questions(tournament_id=32506, count=1 if DEBUG_MODE else 99, get_answered_questions=DEBUG_MODE)
+    data = list_questions(tournament_id=32506, count=2 if DEBUG_MODE else 99, get_answered_questions=DEBUG_MODE)
     ids = [question["id"] for question in data["results"] if int(question["id"]) in [28877, 28876]]
     logger.info(f"Questions found: {ids}")
-    results = asyncio.run(ensemble_async(get_prediction, ids, num_agents=32 if DEBUG_MODE else 32, model_fn=call_claude, prompt_template=SUPERFORECASTING_TEMPLATE))
+    results = asyncio.run(ensemble_async(get_prediction, ids, num_agents=2 if DEBUG_MODE else 32, model_fn=call_claude, prompt_template=SUPERFORECASTING_TEMPLATE))
     logger.info(results)
     #benchmark_all_hyperparameters(ids)
 
