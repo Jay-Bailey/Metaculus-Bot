@@ -200,46 +200,6 @@ def list_questions(tournament_id=3349, offset=0, count=10, get_answered_question
     return data
 
 @backoff.on_exception(backoff.expo,
-                      requests.exceptions.HTTPError,
-                      max_tries=8,  # Adjust as needed
-                      factor=2,     # Exponential factor
-                      jitter=backoff.full_jitter)
-def call_perplexity(query):
-    url = "https://api.perplexity.ai/chat/completions"
-    headers = {
-        "accept": "application/json",
-        "authorization": f"Bearer {PERPLEXITY_API_KEY}",
-        "content-type": "application/json",
-    }
-    payload = {
-        "model": "llama-3.1-sonar-large-128k-online",
-        "messages": [
-            {
-                "role": "system",
-                "content": """
-You are an assistant to a superforecaster.
-The superforecaster will give you a question they intend to forecast on.
-To be a great assistant, you generate a concise but detailed rundown of the most relevant news, including if the question would resolve Yes or No based on current information.
-You do not produce forecasts yourself.
-""",
-            },
-            {"role": "user", "content": query},
-        ],
-    }
-    response = requests.post(url=url, json=payload, headers=headers)
-    response.raise_for_status()
-    content = response.json()["choices"][0]["message"]["content"]
-    return content
-
-
-def call_ask_news(query):
-    ask = AskNewsSDK()
-    graph = ask.chat.live_web_search(queries=[query])
-    return graph.as_string
-
-
-
-@backoff.on_exception(backoff.expo,
                       (AnthropicRateLimitError, AnthropicInternalServerError),
                       max_tries=8,  # Adjust as needed
                       factor=2,     # Exponential factor
@@ -344,7 +304,7 @@ async def call_ask_news(query, summariser_fn=call_claude):
 
 
 
-async def get_prediction(question_details, news_fn=call_perplexity, model_fn=call_claude, prompt_template=PROMPT_TEMPLATE):
+async def get_prediction(question_details, summary_report, model_fn=call_claude, prompt_template=PROMPT_TEMPLATE):
     """Expected formats:
     
     news_fn(question_title: str) -> str
@@ -352,7 +312,7 @@ async def get_prediction(question_details, news_fn=call_perplexity, model_fn=cal
     prompt_template: Contains title, summary, today, background, fine_print, resolution_criteria
     """
     today = datetime.datetime.now().strftime("%Y-%m-%d")
-    summary_report = await news_fn(question_details["title"])
+    summary_report = summary_report or await call_ask_news(question_details["title"])
   
     content = prompt_template.format(
         title=question_details["title"],
@@ -396,8 +356,8 @@ def get_cost(model, token_dict):
     raise NotImplementedError("Only Claude and o1 supported for this atm")
   return token_dict['input'] * COST_DICT[model]['input'] + token_dict['output'] * COST_DICT[model]['output']
 
-async def process_agent(prediction_fn, question_detail, pbar, news_fn=call_perplexity, model_fn=call_claude, prompt_template=PROMPT_TEMPLATE):
-    result = await prediction_fn(question_detail, news_fn, model_fn, prompt_template)
+async def process_agent(prediction_fn, question_detail, pbar, summary_report, model_fn=call_claude, prompt_template=PROMPT_TEMPLATE):
+    result = await prediction_fn(question_detail, summary_report, model_fn, prompt_template)
     pbar.update(1)
     return result
 
@@ -421,12 +381,14 @@ async def ensemble_async(prediction_fn, question_ids, num_agents=32,
     summaries = []
     model_name = "claude-3-5-sonnet-20240620" if model_fn == call_claude else "o1-preview"
     total_iterations = len(question_details) * num_agents
+    summary_report = await news_fn(question_details["title"])
+
     with tqdm(total=total_iterations) as pbar:
         for i, question_detail in enumerate(question_details):
             logger.info(f"Question {i+1} of {len(question_details)}: {question_detail['id']} - {question_detail['title']}")
             tasks = []
             for _ in range(num_agents):
-                task = asyncio.create_task(process_agent(prediction_fn, question_detail, pbar, news_fn, model_fn, prompt_template))
+                task = asyncio.create_task(process_agent(prediction_fn, question_detail, pbar, summary_report, model_fn, prompt_template))
                 tasks.append(task)
             results = await asyncio.gather(*tasks)
             predictions, usages, response_texts = [result[0] for result in results], [get_usage(model_name, result) for result in results], [result[2] for result in results]
