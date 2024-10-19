@@ -381,10 +381,10 @@ async def ensemble_async(prediction_fn, question_ids, num_agents=32,
     summaries = []
     model_name = "claude-3-5-sonnet-20240620" if model_fn == call_claude else "o1-preview"
     total_iterations = len(question_details) * num_agents
-    summary_report = await news_fn(question_details["title"])
 
     with tqdm(total=total_iterations) as pbar:
         for i, question_detail in enumerate(question_details):
+            summary_report = await news_fn(question_details["title"])
             logger.info(f"Question {i+1} of {len(question_details)}: {question_detail['id']} - {question_detail['title']}")
             tasks = []
             for _ in range(num_agents):
