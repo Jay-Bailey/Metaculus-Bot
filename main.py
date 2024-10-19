@@ -292,9 +292,13 @@ async def call_ask_news(query, summariser_fn=call_claude):
         if not isinstance(category_list, list):
             raise ValueError("Category list must be a list, got: " + str(categories))
     except Exception as e:
-        logger.error(f"Failed to parse categories: {categories}")
-        raise e
+        logger.error(f"Failed to parse categories: {categories}. Got error: {e}")
+        category_list = ["All"]
     
+    if not all(category in categories for category in category_list):
+        logger.error(f"Invalid categories: {category_list}. Must be a subset of: {categories}. Using ['All'] instead.")
+        category_list = ["All"]
+
     graph = ask.news.search_news(query=query, strategy='latest news', sentiment='neutral', diversify_sources=True, method='nl', categories=category_list, return_type="string")
     
     summary, _ = await summariser_fn("You are an assistant to a superforecaster. The superforecaster will give you a question they intend to forecast on. To be a great assistant, you generate a concise but detailed rundown of the most relevant news, including if the question would resolve Yes or No based on current information. You do not produce forecasts yourself. The relevant news you have found is: " + graph.as_string)
@@ -517,8 +521,12 @@ def main():
     data = list_questions(tournament_id=32506, count=2 if DEBUG_MODE else 99, get_answered_questions=DEBUG_MODE)
     ids = [question["id"] for question in data["results"]]
     logger.info(f"Questions found: {ids}")
+    if DEBUG_MODE:
+        logger.info("WARNING: DEBUG MODE ENABLED. PREDICTIONS WILL NOT BE SUBMITTED.")
     results = asyncio.run(ensemble_async(get_prediction, ids, num_agents=2 if DEBUG_MODE else 32, news_fn=call_ask_news, model_fn=call_claude, prompt_template=SUPERFORECASTING_TEMPLATE))
     logger.info(results)
+    if DEBUG_MODE:
+        logger.info("WARNING: DEBUG MODE ENABLED. PREDICTIONS WILL NOT BE SUBMITTED.")
     #benchmark_all_hyperparameters(ids)
 
 if __name__ == "__main__":
