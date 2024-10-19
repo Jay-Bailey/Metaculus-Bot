@@ -232,13 +232,6 @@ You do not produce forecasts yourself.
     return content
 
 
-def call_ask_news(query):
-    ask = AskNewsSDK()
-    graph = ask.chat.live_web_search(queries=[query])
-    return graph.as_string
-
-
-
 @backoff.on_exception(backoff.expo,
                       (AnthropicRateLimitError, AnthropicInternalServerError),
                       max_tries=8,  # Adjust as needed
@@ -288,38 +281,6 @@ async def call_gpt(content: str):
                       max_tries=8,  # Adjust as needed
                       factor=2,     # Exponential factor
                       jitter=backoff.full_jitter)
-async def call_perplexity(query):
-    url = "https://api.perplexity.ai/chat/completions"
-    headers = {
-        "accept": "application/json",
-        "authorization": f"Bearer {PERPLEXITY_API_KEY}",
-        "content-type": "application/json",
-    }
-    payload = {
-        "model": "llama-3.1-sonar-large-128k-online",
-        "messages": [
-            {
-                "role": "system",
-                "content": """
-You are an assistant to a superforecaster.
-The superforecaster will give you a question they intend to forecast on.
-To be a great assistant, you generate a concise but detailed rundown of the most relevant news, including if the question would resolve Yes or No based on current information.
-You do not produce forecasts yourself.
-""",
-            },
-            {"role": "user", "content": query},
-        ],
-    }
-    response = requests.post(url=url, json=payload, headers=headers)
-    response.raise_for_status()
-    content = response.json()["choices"][0]["message"]["content"]
-    return content
-
-@backoff.on_exception(backoff.expo,
-                      requests.exceptions.HTTPError,
-                      max_tries=8,  # Adjust as needed
-                      factor=2,     # Exponential factor
-                      jitter=backoff.full_jitter)
 async def call_ask_news(query, summariser_fn=call_claude):
     ask = AskNewsSDK(client_id=ASK_NEWS_CLIENT_ID, client_secret=ASK_NEWS_CLIENT_SECRET)
     categories = ["All", "Business", "Crime", "Politics", "Science", "Sports", "Technology", "Military", "Health", "Entertainment", "Finance", "Culture", "Climate", "Environment", "World"]
@@ -342,6 +303,90 @@ async def call_ask_news(query, summariser_fn=call_claude):
         logger.info(f"News summary: {summary}")
     return summary
 
+@backoff.on_exception(backoff.expo,
+                      requests.exceptions.HTTPError,
+                      max_tries=8,  # Adjust as needed
+                      factor=2,     # Exponential factor
+                      jitter=backoff.full_jitter)
+def get_asknews_context(query: str) -> tuple[str, str]:
+    """
+    Use the AskNews `news` endpoint to get news context for your query.
+    The full API reference can be found here: https://docs.asknews.app/en/reference#get-/v1/news/search
+    """
+    ask = AskNewsSDK(client_id=ASK_NEWS_CLIENT_ID, client_secret=ASK_NEWS_CLIENT_SECRET, scopes=["news"])
+
+    # get the latest news related to the query (within the past 48 hours)
+    hot_response = ask.news.search_news(
+        query=query, # your natural language query
+        n_articles=5, # control the number of articles to include in the context, originally 5
+        return_type="both",
+        strategy="latest news", # enforces looking at the latest news only
+        sentiment="neutral", # only include articles with a neutral sentiment
+        diversify_sources=True, # include articles from a diverse set of sources
+        method='nl',
+    )
+
+    # get context from the "historical" database that contains a news archive going back to 2023
+    historical_response = ask.news.search_news(
+        query=query,
+        n_articles=20,
+        return_type="both",
+        strategy="news knowledge", # looks for relevant news within the past 60 days
+        sentiment="neutral", # only include articles with a neutral sentiment
+        diversify_sources=True, # include articles from a diverse set of sources
+        method='nl',
+    )
+
+    # you can also specify a time range for your historical search if you want to
+    # slice your search up periodically.
+    # now = datetime.datetime.now().timestamp()
+    # start = (datetime.datetime.now() - datetime.timedelta(days=100)).timestamp()
+    # historical_response = ask.news.search_news(
+    #     query=query,
+    #     n_articles=20,
+    #     return_type="both",
+    #     historical=True,
+    #     start_timestamp=int(start),
+    #     end_timestamp=int(now)
+    # )
+
+    formatted_articles = format_asknews_context(
+        hot_response.as_dicts, historical_response.as_dicts)
+    return formatted_articles
+
+
+def format_asknews_context(hot_articles: list[dict], historical_articles: list[dict]) -> str:
+    """
+    Format the articles for posting to Metaculus.
+    """
+
+    formatted_articles = "Here are the relevant news articles:\n\n"
+
+    if hot_articles:
+      hot_articles = [article.__dict__ for article in hot_articles]
+      hot_articles = sorted(
+          hot_articles, key=lambda x: x['pub_date'], reverse=True)
+
+      for article in hot_articles:
+          pub_date = article["pub_date"].strftime("%B %d, %Y %I:%M %p")
+          formatted_articles += f"**{article['eng_title']}**\n{article['summary']}\nOriginal language: {article['language']}\nPublish date: {pub_date}\nSource:[{article['source_id']}]({article['article_url']})\n\n"
+
+    if historical_articles:
+      historical_articles = [article.__dict__ for article in historical_articles]
+      historical_articles = sorted(
+          historical_articles, key=lambda x: x['pub_date'], reverse=True)
+
+      for article in historical_articles:
+          pub_date = article["pub_date"].strftime("%B %d, %Y %I:%M %p")
+          formatted_articles += f"**{article['eng_title']}**\n{article['summary']}\nOriginal language: {article['language']}\nPublish date: {pub_date}\nSource:[{article['source_id']}]({article['article_url']})\n\n"
+
+    if not hot_articles and not historical_articles:
+      formatted_articles += "No articles were found.\n\n"
+      return formatted_articles
+
+    # formatted_articles += f"*Generated by AI at [AskNews](https://asknews.app), check out the [API](https://docs.asknews.app) for more information*."
+
+    return formatted_articles
 
 
 async def get_prediction(question_details, summary_report, model_fn=call_claude, prompt_template=PROMPT_TEMPLATE):
@@ -472,7 +517,7 @@ def main():
     data = list_questions(tournament_id=32506, count=2 if DEBUG_MODE else 99, get_answered_questions=DEBUG_MODE)
     ids = [question["id"] for question in data["results"]]
     logger.info(f"Questions found: {ids}")
-    results = asyncio.run(ensemble_async(get_prediction, ids, num_agents=2 if DEBUG_MODE else 32, news_fn=call_ask_news, model_fn=call_claude, prompt_template=SUPERFORECASTING_TEMPLATE))
+    results = asyncio.run(ensemble_async(get_prediction, ids, num_agents=2 if DEBUG_MODE else 32, news_fn=get_asknews_context, model_fn=call_claude, prompt_template=SUPERFORECASTING_TEMPLATE))
     logger.info(results)
     #benchmark_all_hyperparameters(ids)
 
