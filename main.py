@@ -468,7 +468,7 @@ def benchmark_all_hyperparameters(ids):
 
 def main():
     data = list_questions(tournament_id=32506, count=2 if DEBUG_MODE else 99, get_answered_questions=DEBUG_MODE)
-    ids = [question["id"] for question in data["results"] if int(question["id"]) in [28877, 28876]]
+    ids = [question["id"] for question in data["results"]]
     logger.info(f"Questions found: {ids}")
     results = asyncio.run(ensemble_async(get_prediction, ids, num_agents=2 if DEBUG_MODE else 32, news_fn=call_ask_news, model_fn=call_claude, prompt_template=SUPERFORECASTING_TEMPLATE))
     logger.info(results)
