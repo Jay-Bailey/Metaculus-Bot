@@ -316,7 +316,7 @@ async def get_asknews_context(query: str) -> tuple[str, str]:
     ask = AskNewsSDK(client_id=ASK_NEWS_CLIENT_ID, client_secret=ASK_NEWS_CLIENT_SECRET, scopes=["news"])
 
     # get the latest news related to the query (within the past 48 hours)
-    hot_response = await ask.news.search_news(
+    hot_response = ask.news.search_news(
         query=query, # your natural language query
         n_articles=5, # control the number of articles to include in the context, originally 5
         return_type="both",
@@ -327,7 +327,7 @@ async def get_asknews_context(query: str) -> tuple[str, str]:
     )
 
     # get context from the "historical" database that contains a news archive going back to 2023
-    historical_response = await ask.news.search_news(
+    historical_response = ask.news.search_news(
         query=query,
         n_articles=20,
         return_type="both",
