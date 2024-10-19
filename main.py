@@ -500,7 +500,7 @@ async def ensemble_async(prediction_fn, question_ids, num_agents=32,
 
     logger.info(f"Total cost was ${round(total_cost, 2)}")
 
-DEBUG_MODE = True
+DEBUG_MODE = False
 SUBMIT_PREDICTION = not DEBUG_MODE
 
 # TODO: Incorporate TOURNAMENT_ID, API_BASE_URL, and USER_ID as env variables into the code.
