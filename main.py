@@ -39,7 +39,7 @@ ASK_NEWS_CLIENT_ID = os.environ.get('ASK_NEWS_CLIENT_ID')
 ASK_NEWS_CLIENT_SECRET = os.environ.get('ASK_NEWS_CLIENT_SECRET')
 
 # Log the names of the env variables too.
-logger.info("Environment variables loaded: METACULUS_TOKEN" + str(METACULUS_TOKEN is not None) + ", PERPLEXITY_API_KEY" + str(PERPLEXITY_API_KEY is not None) + ", ANTHROPIC_API_KEY" + str(ANTHROPIC_API_KEY is not None) + ", OPENAI_API_KEY" + str(OPENAI_API_KEY is not None) + ", ASK_NEWS_CLIENT_ID" + str(ASK_NEWS_CLIENT_ID is not None) + ", ASK_NEWS_CLIENT_SECRET" + str(ASK_NEWS_CLIENT_SECRET is not None))
+logger.info("Environment variables loaded: METACULUS_TOKEN " + str(METACULUS_TOKEN is not None) + ", PERPLEXITY_API_KEY " + str(PERPLEXITY_API_KEY is not None) + ", ANTHROPIC_API_KEY " + str(ANTHROPIC_API_KEY is not None) + ", OPENAI_API_KEY " + str(OPENAI_API_KEY is not None) + ", ASK_NEWS_CLIENT_ID " + str(ASK_NEWS_CLIENT_ID is not None) + ", ASK_NEWS_CLIENT_SECRET " + str(ASK_NEWS_CLIENT_SECRET is not None))
 
 PROMPT_TEMPLATE = """
 You are a professional forecaster interviewing for a job.
@@ -125,13 +125,12 @@ SUBMIT_PREDICTION = True
 logger.info("Prediction submission enabled: " + str(SUBMIT_PREDICTION))
 
 def find_number_before_percent(s):
-    # Use a regular expression to find all numbers followed by a '%'
-    matches = re.findall(r'(\d+)%', s)
+    # Use a regular expression to find all numbers (including decimals) prefaced by Probability: and followed by a '%'
+    matches = re.findall(r'(\d+(?:\.\d+)?)%', s)
     if matches:
-        # Return the last number found before a '%'
-        return int(matches[-1])
+        return float(matches[-1])
     else:
-        # Return None if no number found
+        logger.info(f"No number found in string: {s}")
         return None
 
 def post_question_comment(question_id, comment_text):
@@ -282,7 +281,67 @@ async def call_gpt(content: str):
             {"role": "user", "content": content},
         ]
     )
-    return message.choices[0].message, message.usage
+    return message.choices[0].message.content, message.usage
+
+@backoff.on_exception(backoff.expo,
+                      requests.exceptions.HTTPError,
+                      max_tries=8,  # Adjust as needed
+                      factor=2,     # Exponential factor
+                      jitter=backoff.full_jitter)
+async def call_perplexity(query):
+    url = "https://api.perplexity.ai/chat/completions"
+    headers = {
+        "accept": "application/json",
+        "authorization": f"Bearer {PERPLEXITY_API_KEY}",
+        "content-type": "application/json",
+    }
+    payload = {
+        "model": "llama-3.1-sonar-large-128k-online",
+        "messages": [
+            {
+                "role": "system",
+                "content": """
+You are an assistant to a superforecaster.
+The superforecaster will give you a question they intend to forecast on.
+To be a great assistant, you generate a concise but detailed rundown of the most relevant news, including if the question would resolve Yes or No based on current information.
+You do not produce forecasts yourself.
+""",
+            },
+            {"role": "user", "content": query},
+        ],
+    }
+    response = requests.post(url=url, json=payload, headers=headers)
+    response.raise_for_status()
+    content = response.json()["choices"][0]["message"]["content"]
+    return content
+
+@backoff.on_exception(backoff.expo,
+                      requests.exceptions.HTTPError,
+                      max_tries=8,  # Adjust as needed
+                      factor=2,     # Exponential factor
+                      jitter=backoff.full_jitter)
+async def call_ask_news(query, summariser_fn=call_claude):
+    ask = AskNewsSDK(client_id=ASK_NEWS_CLIENT_ID, client_secret=ASK_NEWS_CLIENT_SECRET)
+    categories = ["All", "Business", "Crime", "Politics", "Science", "Sports", "Technology", "Military", "Health", "Entertainment", "Finance", "Culture", "Climate", "Environment", "World"]
+    categories, _ = await summariser_fn(f"Given the question, what is the most relevant category or categories of news to search for? Question: {query}. Respond with a Python list of categories. If you are unsure, respond with ['All']. This is for an API, so you must pick ONLY from the following categories: {', '.join(categories)}")
+    print(categories)
+    
+    try:
+        category_list = eval(categories)
+        if not isinstance(category_list, list):
+            raise ValueError("Category list must be a list, got: " + str(categories))
+    except Exception as e:
+        logger.error(f"Failed to parse categories: {categories}")
+        raise e
+    
+    graph = ask.news.search_news(query=query, strategy='latest news', sentiment='neutral', diversify_sources=True, method='nl', categories=category_list, return_type="string")
+    
+    summary, _ = await summariser_fn("You are an assistant to a superforecaster. The superforecaster will give you a question they intend to forecast on. To be a great assistant, you generate a concise but detailed rundown of the most relevant news, including if the question would resolve Yes or No based on current information. You do not produce forecasts yourself. The relevant news you have found is: " + graph.as_string)
+
+    if DEBUG_MODE:
+        logger.info(f"News summary: {summary}")
+    return summary
+
 
 
 async def get_prediction(question_details, news_fn=call_perplexity, model_fn=call_claude, prompt_template=PROMPT_TEMPLATE):
@@ -293,7 +352,7 @@ async def get_prediction(question_details, news_fn=call_perplexity, model_fn=cal
     prompt_template: Contains title, summary, today, background, fine_print, resolution_criteria
     """
     today = datetime.datetime.now().strftime("%Y-%m-%d")
-    summary_report = news_fn(question_details["title"])
+    summary_report = await news_fn(question_details["title"])
   
     content = prompt_template.format(
         title=question_details["title"],
@@ -305,19 +364,17 @@ async def get_prediction(question_details, news_fn=call_perplexity, model_fn=cal
     )
 
     response_text, usage = await model_fn(content)
-    if DEBUG_MODE:
-        logger.info(f"Content: {content}")
-        logger.info(f"Response text: {response_text}")
 
     # Regular expression to find the number following 'Probability: '
     probability_match = find_number_before_percent(response_text)
+    logger.info(f"Probability match: {probability_match}")
 
-    # Extract the number if a match is found
-    probability = None
     if probability_match:
         probability = int(probability_match) # int(match.group(1))
         logger.info(f"The extracted probability is: {probability}%")
         probability = min(max(probability, 1), 99) # To prevent extreme forecasts
+    else:
+        probability = None
 
     return probability, summary_report, response_text, usage
 
@@ -346,7 +403,7 @@ async def process_agent(prediction_fn, question_detail, pbar, news_fn=call_perpl
 
 def aggregate_prediction_log_odds(predictions):
     probs = [p / 100 for p in predictions if p is not None]
-    probs = [max(min(p, 0.999), 0.001) for p in probs]
+    probs = [max(min(p, 0.99), 0.01) for p in probs]
     log_odds = [math.log(p / (1 - p)) for p in probs]
     average_log_odds = sum(log_odds) / len(log_odds)
     average_probability = 1 / (1 + math.exp(-average_log_odds))
@@ -379,13 +436,13 @@ async def ensemble_async(prediction_fn, question_ids, num_agents=32,
             summary, _ = await model_fn(SUMMARY_PROMPT_PREFIX + '\n'.join(response_texts) + SUMMARY_PROMPT_SUFFIX)
             summaries.append(summary)
 
-            logger.info(predictions)
+            logger.info(f"Predictions: {predictions}")
             aggregated_prediction = aggregate_fn(predictions)
-            logger.info(aggregated_prediction)
+            logger.info(f"Aggregated prediction: {aggregated_prediction}")
 
             if aggregated_prediction is not None and SUBMIT_PREDICTION:
                 comment = f"This prediction was made by averaging an ensemble of {num_agents} agents. A summary of their most common considerations follows.\n\n{summaries[i]}"
-                logger.info(comment)
+                logger.info(f"Comment: {comment}")
                 post_question_prediction(question_ids[i], aggregated_prediction)
                 post_question_comment(question_ids[i], comment)
                 logger.info(f"Prediction submitted for question {question_ids[i]}")
@@ -404,35 +461,18 @@ def benchmark_all_hyperparameters(ids):
     hyperparams = itertools.product(news_fns, model_fns, prompts)
 
     for hyperparam in hyperparams:
-        logger.info(f"Using hyperparameters: {hyperparam}")
+        logger.info(f"Using hyperparameters: {hyperparam[0], hyperparam[1], 'PROMPT_TEMPLATE' if hyperparam[2] == PROMPT_TEMPLATE else 'SUPERFORECASTING_TEMPLATE'}")
         results = asyncio.run(ensemble_async(get_prediction, ids, num_agents=2, news_fn=hyperparam[0], model_fn=hyperparam[1], prompt_template=hyperparam[2]))
         logger.info(results)
         #logger.info(f"Score: {score_benchmark_results(results)}")
 
 def main():
     data = list_questions(tournament_id=32506, count=2 if DEBUG_MODE else 99, get_answered_questions=DEBUG_MODE)
-    ids = [question["id"] for question in data["results"]]
+    ids = [question["id"] for question in data["results"] if int(question["id"]) in [28877, 28876]]
     logger.info(f"Questions found: {ids}")
-    results = asyncio.run(ensemble_async(get_prediction, ids, num_agents=2 if DEBUG_MODE else 32, model_fn=call_gpt, prompt_template=PROMPT_TEMPLATE))
+    results = asyncio.run(ensemble_async(get_prediction, ids, num_agents=2 if DEBUG_MODE else 32, news_fn=call_ask_news, model_fn=call_claude, prompt_template=SUPERFORECASTING_TEMPLATE))
     logger.info(results)
     #benchmark_all_hyperparameters(ids)
 
-async def test_message():
-    async_client = AsyncOpenAI(api_key=OPENAI_API_KEY)
-    message = await async_client.chat.completions.create(
-        model="o1-preview",
-        messages = [
-            {"role": "user", "content": "What is 2+2?"},
-        ]
-    )
-    return message.choices[0].message, message.usage
-
-def test():
-    logger.info("Testing")
-    result = asyncio.run(test_message())
-    print(result)
-    return result
-
 if __name__ == "__main__":
-    test()
     main()
