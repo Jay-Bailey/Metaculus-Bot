@@ -384,7 +384,7 @@ async def ensemble_async(prediction_fn, question_ids, num_agents=32,
 
     with tqdm(total=total_iterations) as pbar:
         for i, question_detail in enumerate(question_details):
-            summary_report = await news_fn(question_details["title"])
+            summary_report = await news_fn(question_detail["title"])
             logger.info(f"Question {i+1} of {len(question_details)}: {question_detail['id']} - {question_detail['title']}")
             tasks = []
             for _ in range(num_agents):
