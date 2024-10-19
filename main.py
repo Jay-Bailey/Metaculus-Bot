@@ -304,7 +304,7 @@ async def call_ask_news(query, summariser_fn=call_claude):
 
 
 
-async def get_prediction(question_details, news_fn=call_perplexity, model_fn=call_claude, prompt_template=PROMPT_TEMPLATE):
+async def get_prediction(question_details, summary_report, model_fn=call_claude, prompt_template=PROMPT_TEMPLATE):
     """Expected formats:
     
     news_fn(question_title: str) -> str
@@ -312,7 +312,7 @@ async def get_prediction(question_details, news_fn=call_perplexity, model_fn=cal
     prompt_template: Contains title, summary, today, background, fine_print, resolution_criteria
     """
     today = datetime.datetime.now().strftime("%Y-%m-%d")
-    summary_report = await news_fn(question_details["title"])
+    summary_report = summary_report or await call_ask_news(question_details["title"])
   
     content = prompt_template.format(
         title=question_details["title"],
@@ -356,8 +356,8 @@ def get_cost(model, token_dict):
     raise NotImplementedError("Only Claude and o1 supported for this atm")
   return token_dict['input'] * COST_DICT[model]['input'] + token_dict['output'] * COST_DICT[model]['output']
 
-async def process_agent(prediction_fn, question_detail, pbar, news_fn=call_perplexity, model_fn=call_claude, prompt_template=PROMPT_TEMPLATE):
-    result = await prediction_fn(question_detail, news_fn, model_fn, prompt_template)
+async def process_agent(prediction_fn, question_detail, pbar, summary_report, model_fn=call_claude, prompt_template=PROMPT_TEMPLATE):
+    result = await prediction_fn(question_detail, summary_report, model_fn, prompt_template)
     pbar.update(1)
     return result
 
@@ -381,12 +381,14 @@ async def ensemble_async(prediction_fn, question_ids, num_agents=32,
     summaries = []
     model_name = "claude-3-5-sonnet-20240620" if model_fn == call_claude else "o1-preview"
     total_iterations = len(question_details) * num_agents
+
     with tqdm(total=total_iterations) as pbar:
         for i, question_detail in enumerate(question_details):
+            summary_report = await news_fn(question_detail["title"])
             logger.info(f"Question {i+1} of {len(question_details)}: {question_detail['id']} - {question_detail['title']}")
             tasks = []
             for _ in range(num_agents):
-                task = asyncio.create_task(process_agent(prediction_fn, question_detail, pbar, news_fn, model_fn, prompt_template))
+                task = asyncio.create_task(process_agent(prediction_fn, question_detail, pbar, summary_report, model_fn, prompt_template))
                 tasks.append(task)
             results = await asyncio.gather(*tasks)
             predictions, usages, response_texts = [result[0] for result in results], [get_usage(model_name, result) for result in results], [result[2] for result in results]
@@ -414,7 +416,7 @@ SUBMIT_PREDICTION = not DEBUG_MODE
 
 # TODO: Incorporate TOURNAMENT_ID, API_BASE_URL, and USER_ID as env variables into the code.
 def benchmark_all_hyperparameters(ids):
-    news_fns = [call_ask_news, call_perplexity]
+    news_fns = [call_perplexity, call_ask_news]
     model_fns = [call_claude, call_gpt]
     prompts = [PROMPT_TEMPLATE, SUPERFORECASTING_TEMPLATE]
 
@@ -428,7 +430,7 @@ def benchmark_all_hyperparameters(ids):
 
 def main():
     data = list_questions(tournament_id=32506, count=2 if DEBUG_MODE else 99, get_answered_questions=DEBUG_MODE)
-    ids = [question["id"] for question in data["results"] if int(question["id"]) in [28877, 28876]]
+    ids = [question["id"] for question in data["results"]]
     logger.info(f"Questions found: {ids}")
     results = asyncio.run(ensemble_async(get_prediction, ids, num_agents=2 if DEBUG_MODE else 32, news_fn=call_ask_news, model_fn=call_claude, prompt_template=SUPERFORECASTING_TEMPLATE))
     logger.info(results)
