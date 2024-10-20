@@ -13,11 +13,11 @@ import math
 
 from openai import AsyncOpenAI
 from openai import RateLimitError as OpenAIRateLimitError, InternalServerError as OpenAIInternalServerError
-from anthropic import AsyncAnthropic, InternalServerError as AnthropicInternalServerError, RateLimitError as AnthropicRateLimitError
+from anthropic import InternalServerError as AnthropicInternalServerError, RateLimitError as AnthropicRateLimitError
 import backoff
 import logging
 
-from asknews_sdk import AskNewsSDK, AsyncAskNewsSDK
+from asknews_sdk import AskNewsSDK
 
 logging.basicConfig(
     level=logging.INFO,
@@ -276,7 +276,7 @@ async def call_claude(content: str) -> str:
                       factor=2,     # Exponential factor
                       jitter=backoff.full_jitter)
 async def call_gpt(content: str):
-    async_client = AsyncOpenAI(api_key=OPENAI_API_KEY, base_url=API_BASE_URL or "https://www.metaculus.com/proxy/openai/v1")
+    async_client = AsyncOpenAI(api_key=OPENAI_API_KEY)
     message = await async_client.chat.completions.create(
         model="o1-preview",
         messages = [
@@ -425,7 +425,7 @@ async def ensemble_async(prediction_fn, question_ids, num_agents=32,
 
     logger.info(f"Total cost was ${round(total_cost, 2)}")
 
-DEBUG_MODE = True
+DEBUG_MODE = False
 SUBMIT_PREDICTION = not DEBUG_MODE
 
 # TODO: Incorporate TOURNAMENT_ID, API_BASE_URL, and USER_ID as env variables into the code.
