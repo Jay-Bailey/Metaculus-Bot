@@ -238,27 +238,37 @@ You do not produce forecasts yourself.
                       factor=2,     # Exponential factor
                       jitter=backoff.full_jitter)
 async def call_claude(content: str) -> str:
-  async_client = AsyncAnthropic(api_key=ANTHROPIC_API_KEY, base_url="https://www.metaculus.com/proxy/anthropic/v1")
+    url = "https://www.metaculus.com/proxy/anthropic/v1/messages/"
 
-  message = await async_client.messages.create(
-      model="claude-3-5-sonnet-20240620",
-      temperature=0.7,
-      max_tokens=4096,
-      system="You are a world-class forecaster.",
-      messages=[
-          {
-              "role": "user",
-              "content": [
-                  {
-                      "type": "text",
-                      "text": content
-                  }
-              ]
-          }
-      ]
-  )
+    headers = {
+        "Authorization": "Token <your Metaculus token>",
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json"
+    }
 
-  return message.content[0].text, message.usage
+    data = {
+        "model": "claude-3-5-sonnet-20240620",
+        "temperature": 0.7,
+        "max_tokens": 4096,
+        "system": "You are a world-class forecaster.",
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": content
+                    }
+                ]
+            }
+        ]
+    }
+    
+    response = requests.post(url, headers=headers, data=json.dumps(data))
+    print(response)
+    print(response.json())
+
+    return response.content[0].text, response.usage
 
 @backoff.on_exception(backoff.expo,
                       (OpenAIRateLimitError, OpenAIInternalServerError),
