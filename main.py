@@ -241,7 +241,7 @@ async def call_claude(content: str) -> str:
     url = "https://www.metaculus.com/proxy/anthropic/v1/messages/"
 
     headers = {
-        "Authorization": "Token <your Metaculus token>",
+        "Authorization": f"Token {METACULUS_TOKEN}",
         "anthropic-version": "2023-06-01",
         "content-type": "application/json"
     }
