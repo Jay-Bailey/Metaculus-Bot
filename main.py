@@ -37,6 +37,7 @@ PERPLEXITY_API_KEY = os.environ.get('PERPLEXITY_API_KEY')
 ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY')
 ASK_NEWS_CLIENT_ID = os.environ.get('ASK_NEWS_CLIENT_ID')
 ASK_NEWS_CLIENT_SECRET = os.environ.get('ASK_NEWS_CLIENT_SECRET')
+API_BASE_URL = "https://www.metaculus.com/api2"
 
 # Log the names of the env variables too.
 logger.info("Environment variables loaded: METACULUS_TOKEN " + str(METACULUS_TOKEN is not None) + ", PERPLEXITY_API_KEY " + str(PERPLEXITY_API_KEY is not None) + ", ANTHROPIC_API_KEY " + str(ANTHROPIC_API_KEY is not None) + ", OPENAI_API_KEY " + str(OPENAI_API_KEY is not None) + ", ASK_NEWS_CLIENT_ID " + str(ASK_NEWS_CLIENT_ID is not None) + ", ASK_NEWS_CLIENT_SECRET " + str(ASK_NEWS_CLIENT_SECRET is not None))
@@ -238,7 +239,7 @@ You do not produce forecasts yourself.
                       factor=2,     # Exponential factor
                       jitter=backoff.full_jitter)
 async def call_claude(content: str) -> str:
-  async_client = AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
+  async_client = AsyncAnthropic(api_key=ANTHROPIC_API_KEY, base_url=API_BASE_URL or "https://api.anthropic.com")
 
   message = await async_client.messages.create(
       model="claude-3-5-sonnet-20240620",
@@ -266,7 +267,7 @@ async def call_claude(content: str) -> str:
                       factor=2,     # Exponential factor
                       jitter=backoff.full_jitter)
 async def call_gpt(content: str):
-    async_client = AsyncOpenAI(api_key=OPENAI_API_KEY)
+    async_client = AsyncOpenAI(api_key=OPENAI_API_KEY, base_url=API_BASE_URL or "https://api.openai.com/v1")
     message = await async_client.chat.completions.create(
         model="o1-preview",
         messages = [
