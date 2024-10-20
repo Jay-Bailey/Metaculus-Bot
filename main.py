@@ -1,4 +1,5 @@
 import asyncio
+import aiohttp
 import datetime
 import json
 import os
@@ -12,11 +13,11 @@ import math
 
 from openai import AsyncOpenAI
 from openai import RateLimitError as OpenAIRateLimitError, InternalServerError as OpenAIInternalServerError
-from anthropic import AsyncAnthropic, InternalServerError as AnthropicInternalServerError, RateLimitError as AnthropicRateLimitError
+from anthropic import InternalServerError as AnthropicInternalServerError, RateLimitError as AnthropicRateLimitError
 import backoff
 import logging
 
-from asknews_sdk import AskNewsSDK, AsyncAskNewsSDK
+from asknews_sdk import AskNewsSDK
 
 logging.basicConfig(
     level=logging.INFO,
@@ -238,27 +239,36 @@ You do not produce forecasts yourself.
                       factor=2,     # Exponential factor
                       jitter=backoff.full_jitter)
 async def call_claude(content: str) -> str:
-  async_client = AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
+    url = "https://www.metaculus.com/proxy/anthropic/v1/messages/"
 
-  message = await async_client.messages.create(
-      model="claude-3-5-sonnet-20240620",
-      temperature=0.7,
-      max_tokens=4096,
-      system="You are a world-class forecaster.",
-      messages=[
-          {
-              "role": "user",
-              "content": [
-                  {
-                      "type": "text",
-                      "text": content
-                  }
-              ]
-          }
-      ]
-  )
+    headers = {
+        "Authorization": f"Token {METACULUS_TOKEN}",
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json"
+    }
 
-  return message.content[0].text, message.usage
+    data = {
+        "model": "claude-3-5-sonnet-20240620",
+        "temperature": 0.7,
+        "max_tokens": 4096,
+        "system": "You are a world-class forecaster.",
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": content
+                    }
+                ]
+            }
+        ]
+    }
+
+    async with aiohttp.ClientSession() as session:
+        async with session.post(url, headers=headers, json=data) as response:
+            response_data = await response.json()
+            return response_data['content'][0]['text'], response_data['usage']
 
 @backoff.on_exception(backoff.expo,
                       (OpenAIRateLimitError, OpenAIInternalServerError),
@@ -307,92 +317,6 @@ async def call_ask_news(query, summariser_fn=call_claude):
         logger.info(f"News summary: {summary}")
     return summary
 
-@backoff.on_exception(backoff.expo,
-                      requests.exceptions.HTTPError,
-                      max_tries=8,  # Adjust as needed
-                      factor=2,     # Exponential factor
-                      jitter=backoff.full_jitter)
-async def get_asknews_context(query: str) -> tuple[str, str]:
-    """
-    Use the AskNews `news` endpoint to get news context for your query.
-    The full API reference can be found here: https://docs.asknews.app/en/reference#get-/v1/news/search
-    """
-    ask = AskNewsSDK(client_id=ASK_NEWS_CLIENT_ID, client_secret=ASK_NEWS_CLIENT_SECRET, scopes=["news"])
-
-    # get the latest news related to the query (within the past 48 hours)
-    hot_response = ask.news.search_news(
-        query=query, # your natural language query
-        n_articles=5, # control the number of articles to include in the context, originally 5
-        return_type="both",
-        strategy="latest news", # enforces looking at the latest news only
-        sentiment="neutral", # only include articles with a neutral sentiment
-        diversify_sources=True, # include articles from a diverse set of sources
-        method='nl',
-    )
-
-    # get context from the "historical" database that contains a news archive going back to 2023
-    historical_response = ask.news.search_news(
-        query=query,
-        n_articles=20,
-        return_type="both",
-        strategy="news knowledge", # looks for relevant news within the past 60 days
-        sentiment="neutral", # only include articles with a neutral sentiment
-        diversify_sources=True, # include articles from a diverse set of sources
-        method='nl',
-    )
-
-    # you can also specify a time range for your historical search if you want to
-    # slice your search up periodically.
-    # now = datetime.datetime.now().timestamp()
-    # start = (datetime.datetime.now() - datetime.timedelta(days=100)).timestamp()
-    # historical_response = ask.news.search_news(
-    #     query=query,
-    #     n_articles=20,
-    #     return_type="both",
-    #     historical=True,
-    #     start_timestamp=int(start),
-    #     end_timestamp=int(now)
-    # )
-
-    formatted_articles = format_asknews_context(
-        hot_response.as_dicts, historical_response.as_dicts)
-    return formatted_articles
-
-
-def format_asknews_context(hot_articles: list[dict], historical_articles: list[dict]) -> str:
-    """
-    Format the articles for posting to Metaculus.
-    """
-
-    formatted_articles = "Here are the relevant news articles:\n\n"
-
-    if hot_articles:
-      hot_articles = [article.__dict__ for article in hot_articles]
-      hot_articles = sorted(
-          hot_articles, key=lambda x: x['pub_date'], reverse=True)
-
-      for article in hot_articles:
-          pub_date = article["pub_date"].strftime("%B %d, %Y %I:%M %p")
-          formatted_articles += f"**{article['eng_title']}**\n{article['summary']}\nOriginal language: {article['language']}\nPublish date: {pub_date}\nSource:[{article['source_id']}]({article['article_url']})\n\n"
-
-    if historical_articles:
-      historical_articles = [article.__dict__ for article in historical_articles]
-      historical_articles = sorted(
-          historical_articles, key=lambda x: x['pub_date'], reverse=True)
-
-      for article in historical_articles:
-          pub_date = article["pub_date"].strftime("%B %d, %Y %I:%M %p")
-          formatted_articles += f"**{article['eng_title']}**\n{article['summary']}\nOriginal language: {article['language']}\nPublish date: {pub_date}\nSource:[{article['source_id']}]({article['article_url']})\n\n"
-
-    if not hot_articles and not historical_articles:
-      formatted_articles += "No articles were found.\n\n"
-      return formatted_articles
-
-    # formatted_articles += f"*Generated by AI at [AskNews](https://asknews.app), check out the [API](https://docs.asknews.app) for more information*."
-
-    return formatted_articles
-
-
 async def get_prediction(question_details, summary_report, model_fn=call_claude, prompt_template=PROMPT_TEMPLATE):
     """Expected formats:
     
@@ -432,7 +356,8 @@ SUMMARY_PROMPT_SUFFIX = """Please return a brief summary of the most common cons
 
 def get_usage(model, result):
   if model.startswith('claude'):
-    return {'input': result[-1].input_tokens, 'output': result[-1].output_tokens}
+    print(result)
+    return {'input': result[-1]['input_tokens'], 'output': result[-1]['output_tokens']}
   elif model.startswith('o1'):
     return {'input': result[-1].prompt_tokens, 'output': result[-1].completion_tokens}
   else:
