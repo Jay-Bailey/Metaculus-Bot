@@ -268,7 +268,7 @@ async def call_claude(content: str) -> str:
     print(response)
     print(response.json())
 
-    return response.content[0].text, response.usage
+    return response['content'][0]['text'], response['usage']
 
 @backoff.on_exception(backoff.expo,
                       (OpenAIRateLimitError, OpenAIInternalServerError),
