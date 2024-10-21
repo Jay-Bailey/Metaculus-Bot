@@ -1,4 +1,5 @@
 anthropic
+aiohttp
 backoff
 nest_asyncio
 tqdm
