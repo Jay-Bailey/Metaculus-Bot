@@ -240,11 +240,7 @@ You do not produce forecasts yourself.
                       factor=2,     # Exponential factor
                       jitter=backoff.full_jitter)
 async def call_claude(content: str) -> str:
-<<<<<<< HEAD
-  async_client = AsyncAnthropic(api_key=ANTHROPIC_API_KEY, base_url=API_BASE_URL or "https://api.anthropic.com")
-=======
     url = "https://www.metaculus.com/proxy/anthropic/v1/messages/"
->>>>>>> bcbb37c15f563771545b7c168c65e71e1622f998
 
     headers = {
         "Authorization": f"Token {METACULUS_TOKEN}",
@@ -272,6 +268,7 @@ async def call_claude(content: str) -> str:
 
     async with aiohttp.ClientSession() as session:
         async with session.post(url, headers=headers, json=data) as response:
+            print(response)
             response_data = await response.json()
             return response_data['content'][0]['text'], response_data['usage']
 
