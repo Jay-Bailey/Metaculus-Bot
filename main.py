@@ -235,7 +235,7 @@ You do not produce forecasts yourself.
 
 
 @backoff.on_exception(backoff.expo,
-                      (AnthropicRateLimitError, AnthropicInternalServerError),
+                      (AnthropicRateLimitError, AnthropicInternalServerError, aiohttp.ContentTypeError),
                       max_tries=8,  # Adjust as needed
                       factor=2,     # Exponential factor
                       jitter=backoff.full_jitter)
