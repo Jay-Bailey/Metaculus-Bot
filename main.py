@@ -268,7 +268,6 @@ async def call_claude(content: str) -> str:
 
     async with aiohttp.ClientSession() as session:
         async with session.post(url, headers=headers, json=data) as response:
-            print(response)
             response_data = await response.json()
             return response_data['content'][0]['text'], response_data['usage']
 
@@ -297,7 +296,6 @@ async def call_ask_news(query, summariser_fn=call_claude):
     ask = AskNewsSDK(client_id=ASK_NEWS_CLIENT_ID, client_secret=ASK_NEWS_CLIENT_SECRET)
     categories = ["All", "Business", "Crime", "Politics", "Science", "Sports", "Technology", "Military", "Health", "Entertainment", "Finance", "Culture", "Climate", "Environment", "World"]
     categories, _ = await summariser_fn(f"Given the question, what is the most relevant category or categories of news to search for? Question: {query}. Respond with a Python list of categories. If you are unsure, respond with ['All']. This is for an API, so you must pick ONLY from the following categories: {', '.join(categories)}")
-    print(categories)
     
     try:
         category_list = eval(categories)
@@ -358,7 +356,6 @@ SUMMARY_PROMPT_SUFFIX = """Please return a brief summary of the most common cons
 
 def get_usage(model, result):
   if model.startswith('claude'):
-    print(result)
     return {'input': result[-1]['input_tokens'], 'output': result[-1]['output_tokens']}
   elif model.startswith('o1'):
     return {'input': result[-1].prompt_tokens, 'output': result[-1].completion_tokens}
