@@ -295,20 +295,21 @@ async def call_gpt(content: str):
 async def call_ask_news(query, summariser_fn=call_claude):
     ask = AskNewsSDK(client_id=ASK_NEWS_CLIENT_ID, client_secret=ASK_NEWS_CLIENT_SECRET)
     categories = ["All", "Business", "Crime", "Politics", "Science", "Sports", "Technology", "Military", "Health", "Entertainment", "Finance", "Culture", "Climate", "Environment", "World"]
-    categories, _ = await summariser_fn(f"Given the question, what is the most relevant category or categories of news to search for? Question: {query}. Respond with a Python list of categories. If you are unsure, respond with ['All']. This is for an API, so you must pick ONLY from the following categories: {', '.join(categories)}")
+    category_response, _ = await summariser_fn(f"Given the question, what is the most relevant category or categories of news to search for? Question: {query}. Respond with a Python list of categories. If you are unsure, respond with ['All']. This is for an API, so you must pick ONLY from the following categories: {', '.join(categories)}")
     
     try:
-        category_list = eval(categories)
+        category_list = eval(category_response)
         if not isinstance(category_list, list):
-            raise ValueError("Category list must be a list, got: " + str(categories))
+            raise ValueError("Category list must be a list, got: " + str(category_response))
     except Exception as e:
-        logger.error(f"Failed to parse categories: {categories}. Got error: {e}")
+        logger.error(f"Failed to parse categories: {category_response}. Got error: {e}")
         category_list = ["All"]
     
     if not all(category in categories for category in category_list):
         logger.error(f"Invalid categories: {category_list}. Must be a subset of: {categories}. Using ['All'] instead.")
         category_list = ["All"]
 
+    print(category_list)
     graph = ask.news.search_news(query=query, strategy='latest news', diversify_sources=True, method='nl', categories=category_list, return_type="string")
     
     summary, _ = await summariser_fn("You are an assistant to a superforecaster. The superforecaster will give you a question they intend to forecast on. To be a great assistant, you generate a concise but detailed rundown of the most relevant news, including if the question would resolve Yes or No based on current information. You do not produce forecasts yourself. The relevant news you have found is: " + graph.as_string)
