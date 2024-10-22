@@ -269,6 +269,7 @@ async def call_claude(content: str) -> str:
     async with aiohttp.ClientSession() as session:
         async with session.post(url, headers=headers, json=data) as response:
             response_data = await response.json()
+            print(response_data)
             return response_data['content'][0]['text'], response_data['usage']
 
 @backoff.on_exception(backoff.expo,
@@ -386,6 +387,12 @@ def aggregate_prediction_log_odds(predictions):
 def aggregate_prediction_mean(predictions):
     return round(sum(filter(None, predictions)) / len(list(filter(None, predictions))), 0)
 
+def aggregate_by_consensus(predictions):
+    # We want the closest to the consensus, which is mean for most values and log odds for extreme values.
+    if 10 <= aggregate_prediction_mean(predictions) <= 90:
+        return aggregate_prediction_mean(predictions)
+    return aggregate_prediction_log_odds(predictions)
+
 async def ensemble_async(prediction_fn, question_ids, num_agents=32, 
                          aggregate_fn = aggregate_prediction_log_odds,
                          news_fn = call_perplexity, model_fn = call_claude, prompt_template = PROMPT_TEMPLATE):
@@ -448,7 +455,7 @@ def main():
     logger.info(f"Questions found: {ids}")
     if DEBUG_MODE:
         logger.info("WARNING: DEBUG MODE ENABLED. PREDICTIONS WILL NOT BE SUBMITTED.")
-    results = asyncio.run(ensemble_async(get_prediction, ids, num_agents=2 if DEBUG_MODE else 32, aggregate_fn=aggregate_prediction_mean, news_fn=call_ask_news, model_fn=call_claude, prompt_template=SUPERFORECASTING_TEMPLATE))
+    results = asyncio.run(ensemble_async(get_prediction, ids, num_agents=2 if DEBUG_MODE else 32, aggregate_fn=aggregate_by_consensus, news_fn=call_ask_news, model_fn=call_claude, prompt_template=SUPERFORECASTING_TEMPLATE))
     logger.info(results)
     if DEBUG_MODE:
         logger.info("WARNING: DEBUG MODE ENABLED. PREDICTIONS WILL NOT BE SUBMITTED.")
