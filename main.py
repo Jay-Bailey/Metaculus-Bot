@@ -9,15 +9,12 @@ import sys
 from tqdm.asyncio import tqdm
 from urllib.parse import urlencode
 import itertools
-import math
 
 from openai import AsyncOpenAI
 from openai import RateLimitError as OpenAIRateLimitError, InternalServerError as OpenAIInternalServerError
-from anthropic import InternalServerError as AnthropicInternalServerError, RateLimitError as AnthropicRateLimitError
+from anthropic import AsyncAnthropic, InternalServerError as AnthropicInternalServerError, RateLimitError as AnthropicRateLimitError
 import backoff
 import logging
-
-from asknews_sdk import AskNewsSDK
 
 logging.basicConfig(
     level=logging.INFO,
@@ -39,9 +36,11 @@ ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY')
 ASK_NEWS_CLIENT_ID = os.environ.get('ASK_NEWS_CLIENT_ID')
 ASK_NEWS_CLIENT_SECRET = os.environ.get('ASK_NEWS_CLIENT_SECRET')
 API_BASE_URL = "https://www.metaculus.com/api2"
+METACULUS_PROXY = False
 
 # Log the names of the env variables too.
 logger.info("Environment variables loaded: METACULUS_TOKEN " + str(METACULUS_TOKEN is not None) + ", PERPLEXITY_API_KEY " + str(PERPLEXITY_API_KEY is not None) + ", ANTHROPIC_API_KEY " + str(ANTHROPIC_API_KEY is not None) + ", OPENAI_API_KEY " + str(OPENAI_API_KEY is not None) + ", ASK_NEWS_CLIENT_ID " + str(ASK_NEWS_CLIENT_ID is not None) + ", ASK_NEWS_CLIENT_SECRET " + str(ASK_NEWS_CLIENT_SECRET is not None))
+logger.info("METACULUS_PROXY: " + str(METACULUS_PROXY))
 
 PROMPT_TEMPLATE = """
 You are a professional forecaster interviewing for a job.
@@ -240,37 +239,59 @@ You do not produce forecasts yourself.
                       factor=2,     # Exponential factor
                       jitter=backoff.full_jitter)
 async def call_claude(content: str) -> str:
-    url = "https://www.metaculus.com/proxy/anthropic/v1/messages/"
+    if METACULUS_PROXY:
+        url = "https://www.metaculus.com/proxy/anthropic/v1/messages/"
 
-    headers = {
-        "Authorization": f"Token {METACULUS_TOKEN}",
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json"
-    }
+        headers = {
+            "Authorization": f"Token {METACULUS_TOKEN}",
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json"
+        }
 
-    data = {
-        "model": "claude-3-5-sonnet-20240620",
-        "temperature": 0.7,
-        "max_tokens": 4096,
-        "system": "You are a world-class forecaster.",
-        "messages": [
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": content
-                    }
-                ]
-            }
-        ]
-    }
+        data = {
+            "model": "claude-3-5-sonnet-20240620",
+            "temperature": 0.7,
+            "max_tokens": 4096,
+            "system": "You are a world-class forecaster.",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": content
+                        }
+                    ]
+                }
+            ]
+        }
 
-    async with aiohttp.ClientSession() as session:
-        async with session.post(url, headers=headers, json=data) as response:
-            response_data = await response.json()
-            print(response_data)
-            return response_data['content'][0]['text'], response_data['usage']
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, headers=headers, json=data) as response:
+                response_data = await response.json()
+                return response_data['content'][0]['text'], response_data['usage']
+            
+    else:
+        async_client = AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
+        message = await async_client.messages.create(
+            model="claude-3-5-sonnet-20240620",
+            temperature=0.7,
+            max_tokens=4096,
+            system="You are a world-class forecaster.",
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": content
+                        }
+                    ]
+                }
+            ]
+        )
+
+        return message.content[0].text, message.usage
 
 @backoff.on_exception(backoff.expo,
                       (OpenAIRateLimitError, OpenAIInternalServerError),
@@ -400,7 +421,7 @@ async def ensemble_async(prediction_fn, question_ids, num_agents=32,
     total_cost = 0
     final_predictions = []
     summaries = []
-    model_name = "claude-3-5-sonnet-20240620" if model_fn == call_claude else "o1-preview"
+    model_name = "claude-3-5-sonnet-20241022" if model_fn == call_claude else "o1-preview"
     total_iterations = len(question_details) * num_agents
 
     with tqdm(total=total_iterations) as pbar:
