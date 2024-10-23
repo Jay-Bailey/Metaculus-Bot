@@ -315,7 +315,8 @@ async def call_gpt(content: str):
                       requests.exceptions.HTTPError,
                       max_tries=8,  # Adjust as needed
                       factor=2,     # Exponential factor
-                      jitter=backoff.full_jitter)
+                      jitter=backoff.full_jitter,
+                      timeout=60)
 async def call_ask_news(query, summariser_fn=call_claude):
     ask = AskNewsSDK(client_id=ASK_NEWS_CLIENT_ID, client_secret=ASK_NEWS_CLIENT_SECRET)
     categories = ["All", "Business", "Crime", "Politics", "Science", "Sports", "Technology", "Military", "Health", "Entertainment", "Finance", "Culture", "Climate", "Environment", "World"]
