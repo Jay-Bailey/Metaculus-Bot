@@ -251,7 +251,7 @@ async def call_claude(content: str) -> str:
         }
 
         data = {
-            "model": "claude-3-5-sonnet-20240620",
+            "model": "claude-3-5-sonnet-20241022",
             "temperature": 0.7,
             "max_tokens": 4096,
             "system": "You are a world-class forecaster.",
@@ -276,7 +276,7 @@ async def call_claude(content: str) -> str:
     else:
         async_client = AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
         message = await async_client.messages.create(
-            model="claude-3-5-sonnet-20240620",
+            model="claude-3-5-sonnet-20241022",
             temperature=0.7,
             max_tokens=4096,
             system="You are a world-class forecaster.",
@@ -381,13 +381,15 @@ SUMMARY_PROMPT_SUFFIX = """Please return a brief summary of the most common cons
 
 def get_usage(model, result):
   if model.startswith('claude'):
-    return {'input': result[-1]['input_tokens'], 'output': result[-1]['output_tokens']}
+    if METACULUS_PROXY:
+        return {'input': result[-1]['input_tokens'], 'output': result[-1]['output_tokens']}
+    return {'input': result[-1].input_tokens, 'output': result[-1].output_tokens}
   elif model.startswith('o1'):
     return {'input': result[-1].prompt_tokens, 'output': result[-1].completion_tokens}
   else:
       raise NotImplementedError("Only Claude and o1 supported for this atm")
 
-COST_DICT = {"claude-3-5-sonnet-20240620": {"input": 3.0/1000000, "output": 15.0/1000000}, "o1-preview": {"input": 15/1000000, "output": 60/1000000}}
+COST_DICT = {"claude-3-5-sonnet-20241022": {"input": 3.0/1000000, "output": 15.0/1000000}, "o1-preview": {"input": 15/1000000, "output": 60/1000000}}
 
 def get_cost(model, token_dict):
   if model not in COST_DICT:
