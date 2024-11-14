@@ -480,7 +480,7 @@ def main():
     logger.info(f"Questions found: {ids}")
     if DEBUG_MODE:
         logger.info("WARNING: DEBUG MODE ENABLED. PREDICTIONS WILL NOT BE SUBMITTED.")
-    results = asyncio.run(ensemble_async(get_prediction, ids, num_agents=2 if DEBUG_MODE else 32, aggregate_fn=aggregate_by_consensus, news_fn=call_ask_news, model_fn=call_claude, prompt_template=SUPERFORECASTING_TEMPLATE))
+    results = asyncio.run(ensemble_async(get_prediction, ids, num_agents=2 if DEBUG_MODE else 32, aggregate_fn=aggregate_by_consensus, news_fn=call_perplexity, model_fn=call_claude, prompt_template=PROMPT_TEMPLATE))
     logger.info(results)
     if DEBUG_MODE:
         logger.info("WARNING: DEBUG MODE ENABLED. PREDICTIONS WILL NOT BE SUBMITTED.")
